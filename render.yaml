@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: circulo-bienes-raices
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    publishPath: ./frontend/dist
+    headers:
+      - path: /*
+        headers:
+          - key: X-Frame-Options
+            value: DENY
+          - key: X-Content-Type-Options
+            value: nosniff
+      - path: /assets/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000
