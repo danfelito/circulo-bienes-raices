@@ -1,9 +1,12 @@
 services:
   - type: web
     name: circulo-bienes-raices
-    runtime: static
-    buildCommand: cd frontend && npm install && npm run build
-    publishDir: ./frontend/dist
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
     headers:
       - path: /*
         headers:
