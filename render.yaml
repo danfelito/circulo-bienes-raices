@@ -3,7 +3,7 @@ services:
     name: circulo-bienes-raices
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
-    publishPath: ./frontend/dist
+    publishDir: ./frontend/dist
     headers:
       - path: /*
         headers:
