@@ -1,4 +1,4 @@
-# Multi-stage build para Vite + nginx (compatible con Render PORT)
+# Multi-stage build para Vite + nginx
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -12,8 +12,8 @@ RUN cd frontend && npm run build
 FROM nginx:alpine
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
-# Configuración nginx para SPA + variable PORT de Render
-COPY nginx.conf /etc/nginx/conf.d/default.conf.template
+# Configuración nginx para SPA (puerto 80 interno, Render mapea el puerto externo)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
-CMD /bin/sh -c "envsubst '\$PORT' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+CMD ["nginx", "-g", "daemon off;"]
