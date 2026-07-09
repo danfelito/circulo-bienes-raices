@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Property {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  description   String    @db.Text
+  operation     String    // venta, renta
+  type          String    // casa, departamento, terreno, oficina, local, otros
+  price         Float
+  currency      String    @default("MXN")
+  bedrooms      Int?
+  bathrooms     Int?
+  area          Float?    // m2 construcción
+  lotArea       Float?    // m2 terreno
+  parking       Int?
+  yearBuilt     Int?
+  city          String
+  state         String    @default("Veracruz")
+  country       String    @default("México")
+  address       String?
+  lat           Float?
+  lng           Float?
+  features      String?   @db.Text // JSON string
+  status        String    @default("available") // available, sold, rented, reserved
+  featured      Boolean   @default(false)
+  published     Boolean   @default(true)
+  views         Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  photos     Photo[]
+  inquiries  Inquiry[]
+
+  @@map("properties")
+}
+
+model Photo {
+  id         String   @id @default(cuid())
+  url        String
+  publicId   String?  // Cloudinary public_id for deletion
+  alt        String?
+  order      Int      @default(0)
+  isMain     Boolean  @default(false)
+  propertyId String
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("photos")
+}
+
+model Inquiry {
+  id         String   @id @default(cuid())
+  name       String
+  email      String
+  phone      String?
+  message    String   @db.Text
+  propertyId String?
+  honeypot   String?  // Anti-spam honeypot field
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@map("inquiries")
+}

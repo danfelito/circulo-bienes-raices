@@ -1,79 +1,99 @@
-﻿import { ArrowUpRight, Menu, X } from 'lucide-react';
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+﻿import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Menu, X, Home, Building2, Shield } from 'lucide-react';
 
-export default function Navbar() {
+const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const navLinks = [
-    { name: 'Inicio', href: '/' },
-    { name: 'Propiedades', href: '/propiedades' },
-    { name: 'Servicios', href: '#servicios' },
-    { name: 'Nosotros', href: '#nosotros' },
-    { name: 'Contacto', href: '#contacto' },
+    { to: '/', label: 'Inicio', icon: Home },
+    { to: '/propiedades', label: 'Propiedades', icon: Building2 },
+    { to: '/admin', label: 'Admin', icon: Shield },
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10">
-      <div className="px-6 lg:px-16 py-4 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="h-12 w-12 rounded-full bg-red-600 flex items-center justify-center">
-            <span className="text-white font-bold text-xl">CI</span>
-          </div>
-          <span className="text-white font-heading italic text-lg hidden sm:block">Círculo Internacional</span>
-        </Link>
-        <div className="hidden md:flex items-center gap-1">
-          {navLinks.map((link) => (
-            link.href.startsWith('/') ? (
-              <Link 
-                key={link.name} 
-                to={link.href} 
-                className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white transition-colors"
+    <motion.nav
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        scrolled ? 'bg-[#111]/95 backdrop-blur-lg shadow-lg' : 'bg-transparent'
+      }`}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <Link to="/" className="flex items-center gap-2">
+            <span className="text-xl font-bold bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
+              Círculo Internacional
+            </span>
+            <span className="text-xs text-gray-400 hidden sm:block">Bienes Raíces</span>
+          </Link>
+
+          <div className="hidden md:flex items-center gap-6">
+            {navLinks.map(({ to, label, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+                  location.pathname === to || (to === '/admin' && isAdmin)
+                    ? 'text-amber-400'
+                    : 'text-gray-300 hover:text-amber-400'
+                }`}
               >
-                {link.name}
+                <Icon size={16} />
+                {label}
               </Link>
-            ) : (
-              <a 
-                key={link.name} 
-                href={link.href} 
-                className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white transition-colors"
-              >
-                {link.name}
-              </a>
-            )
-          ))}
-          <button className="liquid-glass-strong rounded-full px-5 py-2 text-sm font-medium flex items-center gap-2 ml-4">
-            Agendar Visita <ArrowUpRight className="w-4 h-4" />
+            ))}
+          </div>
+
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="md:hidden text-gray-300 hover:text-amber-400"
+          >
+            {isOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
-        <button className="md:hidden text-white p-2" onClick={() => setIsOpen(!isOpen)}>
-          {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
       </div>
-      {isOpen && (
-        <div className="md:hidden mt-4 pb-4 space-y-2 px-6">
-          {navLinks.map((link) => (
-            link.href.startsWith('/') ? (
-              <Link 
-                key={link.name} 
-                to={link.href} 
-                className="block px-4 py-2 text-white/80 hover:text-white" 
-                onClick={() => setIsOpen(false)}
-              >
-                {link.name}
-              </Link>
-            ) : (
-              <a 
-                key={link.name} 
-                href={link.href} 
-                className="block px-4 py-2 text-white/80 hover:text-white" 
-                onClick={() => setIsOpen(false)}
-              >
-                {link.name}
-              </a>
-            )
-          ))}
-        </div>
-      )}
-    </nav>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="md:hidden bg-[#111]/95 backdrop-blur-lg border-t border-white/10"
+          >
+            <div className="px-4 py-3 space-y-2">
+              {navLinks.map(({ to, label, icon: Icon }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                    location.pathname === to
+                      ? 'bg-amber-400/10 text-amber-400'
+                      : 'text-gray-300 hover:bg-white/5'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.nav>
   );
-}
+};
+
+export default Navbar;

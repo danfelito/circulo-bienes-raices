@@ -24,3 +24,10 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Prisma - migrations ARE needed for deploy
+# backend/prisma/migrations/
+
+# Skills (internal)
+skills/
+agente.md

@@ -1,19 +1,42 @@
-# Multi-stage build para Vite + nginx (compatible con Render)
+# ---- Build Stage ----
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Backend
+COPY backend/package*.json ./backend/
+WORKDIR /app/backend
+RUN npm ci --only=production
+
+COPY backend/ ./ 
+RUN npx prisma generate
+
+# Frontend
+WORKDIR /app
 COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm install --legacy-peer-deps
+WORKDIR /app/frontend
+RUN npm ci
 
-COPY frontend/ ./frontend/
-RUN cd frontend && npm run build
+COPY frontend/ ./
+RUN npm run build
 
-# Servir con nginx
-FROM nginx:alpine
-COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+# ---- Production Stage ----
+FROM node:20-alpine
 
-# Configuración nginx para SPA
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-EXPOSE 80
-# Usa entrypoint por defecto de nginx:alpine (nginx -g 'daemon off;')
+# Copy backend
+COPY --from=builder /app/backend/node_modules ./node_modules
+COPY --from=builder /app/backend/ ./
+
+# Copy frontend build
+COPY --from=builder /app/frontend/dist ./frontend/dist
+
+# Environment
+ENV NODE_ENV=production
+ENV PORT=5000
+
+EXPOSE 5000
+
+# Run migrations on startup then start server
+CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]

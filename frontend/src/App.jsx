@@ -1,44 +1,37 @@
 ﻿import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import StartSection from './components/StartSection';
-import FeaturesChess from './components/FeaturesChess';
-import FeaturesGrid from './components/FeaturesGrid';
-import Stats from './components/Stats';
-import Testimonials from './components/Testimonials';
-import CtaFooter from './components/CtaFooter';
+import Footer from './components/Footer';
+import HomePage from './pages/HomePage';
 import PropertiesPage from './pages/PropertiesPage';
-
-function Home() {
-  return (
-    <div className="bg-black min-h-screen">
-      <div className="relative z-10">
-        <Hero />
-        <div className="bg-black">
-          <StartSection />
-          <FeaturesChess />
-          <FeaturesGrid />
-          <Stats />
-          <Testimonials />
-          <CtaFooter />
-        </div>
-      </div>
-    </div>
-  );
-}
+import PropertyDetailPage from './pages/PropertyDetailPage';
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminProperties from './pages/admin/AdminProperties';
+import AdminPropertyForm from './pages/admin/AdminPropertyForm';
+import AdminInquiries from './pages/admin/AdminInquiries';
+import ProtectedRoute from './components/admin/ProtectedRoute';
 
 function App() {
   return (
-    <Router>
-      <div className="bg-black min-h-screen">
+    <BrowserRouter>
+      <div className="min-h-screen bg-[#0a0a0a] text-white">
         <Navbar />
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/propiedades" element={<PropertiesPage />} />
+          <Route path="/propiedades/:slug" element={<PropertyDetailPage />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/admin/propiedades" element={<ProtectedRoute><AdminProperties /></ProtectedRoute>} />
+          <Route path="/admin/propiedades/nueva" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
+          <Route path="/admin/propiedades/:id/editar" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
+          <Route path="/admin/consultas" element={<ProtectedRoute><AdminInquiries /></ProtectedRoute>} />
         </Routes>
+        <Footer />
       </div>
-    </Router>
+    </BrowserRouter>
   );
 }
+
 export default App;
