@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/circulo_test
+      JWT_SECRET: ci-only-secret-with-more-than-32-characters
+      ADMIN_EMAIL: ci-admin@example.com
+      ADMIN_PASSWORD: ci-password-only-12345
+      CLOUDINARY_CLOUD_NAME: ci-placeholder
+      CLOUDINARY_API_KEY: ci-placeholder
+      CLOUDINARY_API_SECRET: ci-placeholder
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Validate Prisma schema
+        working-directory: backend
+        run: npx prisma validate
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Check backend JavaScript syntax
+        working-directory: backend
+        run: find src prisma -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Docker image
+        run: docker build -t circulo-bienes-raices:ci .
