@@ -52,6 +52,14 @@ const api = {
     return res.json();
   },
 
+  getAdminProperty: async (id) => {
+    const res = await fetch(`${API_BASE}/properties/admin/${id}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'Propiedad no encontrada'));
+    return res.json();
+  },
+
   getFeatured: async () => {
     const res = await fetch(`${API_BASE}/properties/featured`);
     if (!res.ok) throw new Error('Error al cargar destacadas');
