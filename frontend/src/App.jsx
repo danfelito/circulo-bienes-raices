@@ -10,6 +10,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProperties from './pages/admin/AdminProperties';
 import AdminPropertyForm from './pages/admin/AdminPropertyForm';
 import AdminInquiries from './pages/admin/AdminInquiries';
+import AdminImport from './pages/admin/AdminImport';
 import ProtectedRoute from './components/admin/ProtectedRoute';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="/admin/propiedades" element={<ProtectedRoute><AdminProperties /></ProtectedRoute>} />
           <Route path="/admin/propiedades/nueva" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
           <Route path="/admin/propiedades/:id/editar" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
+          <Route path="/admin/importar" element={<ProtectedRoute><AdminImport /></ProtectedRoute>} />
           <Route path="/admin/consultas" element={<ProtectedRoute><AdminInquiries /></ProtectedRoute>} />
         </Routes>
         <Footer />
