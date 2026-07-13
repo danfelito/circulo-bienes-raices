@@ -1,42 +1,42 @@
-# ---- Build Stage ----
+# ---- Build stage ----
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Backend
+# Install backend dependencies, including the Prisma CLI required to generate the client.
 COPY backend/package*.json ./backend/
 WORKDIR /app/backend
-RUN npm ci --only=production
-
-COPY backend/ ./ 
+RUN npm ci
+COPY backend/ ./
 RUN npx prisma generate
 
-# Frontend
+# Build the React/Vite frontend.
 WORKDIR /app
 COPY frontend/package*.json ./frontend/
 WORKDIR /app/frontend
 RUN npm ci
-
 COPY frontend/ ./
 RUN npm run build
 
-# ---- Production Stage ----
+# ---- Production stage ----
 FROM node:20-alpine
 
 WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=10000
 
-# Copy backend
 COPY --from=builder /app/backend/node_modules ./node_modules
 COPY --from=builder /app/backend/ ./
-
-# Copy frontend build
 COPY --from=builder /app/frontend/dist ./frontend/dist
 
-# Environment
-ENV NODE_ENV=production
-ENV PORT=5000
+# The node image includes a non-root user.
+RUN chown -R node:node /app
+USER node
 
-EXPOSE 5000
+EXPOSE 10000
 
-# Run migrations on startup then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null || exit 1
+
+# Migrations and the idempotent admin bootstrap run before every start.
+CMD ["sh", "-c", "npx prisma migrate deploy && node prisma/init-admin.js && node src/index.js"]
