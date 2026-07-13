@@ -1,6 +1,7 @@
 # ---- Build Stage ----
 FROM node:20-alpine AS builder
 
+RUN apk add --no-cache python3 make g++ openssl
 WORKDIR /app
 
 # Backend dependencies and Prisma client
@@ -21,6 +22,7 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:20-alpine
 
+RUN apk add --no-cache libstdc++ openssl
 WORKDIR /app/backend
 
 # Keep Prisma CLI available for production migrations
