@@ -4,7 +4,8 @@ ALTER TABLE "properties"
   ADD COLUMN "sourceType" TEXT NOT NULL DEFAULT 'MANUAL',
   ADD COLUMN "sourceFolder" TEXT,
   ADD COLUMN "sourceHash" TEXT,
-  ADD COLUMN "archivedAt" TIMESTAMP(3);
+  ADD COLUMN "archivedAt" TIMESTAMP(3),
+  ALTER COLUMN "bathrooms" TYPE DOUBLE PRECISION USING "bathrooms"::DOUBLE PRECISION;
 
 CREATE UNIQUE INDEX "properties_referenceCode_key" ON "properties"("referenceCode");
 CREATE INDEX "properties_published_createdAt_idx" ON "properties"("published", "createdAt");
