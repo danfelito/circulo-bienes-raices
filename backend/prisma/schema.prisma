@@ -16,48 +16,63 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  importJobs ImportJob[]
+
   @@map("users")
 }
 
 model Property {
-  id            String    @id @default(cuid())
-  title         String
-  slug          String    @unique
-  description   String    @db.Text
-  operation     String    // venta, renta
-  type          String    // casa, departamento, terreno, oficina, local, otros
-  price         Float
-  currency      String    @default("MXN")
-  bedrooms      Int?
-  bathrooms     Int?
-  area          Float?    // m2 construcción
-  lotArea       Float?    // m2 terreno
-  parking       Int?
-  yearBuilt     Int?
-  city          String
-  state         String    @default("Veracruz")
-  country       String    @default("México")
-  address       String?
-  lat           Float?
-  lng           Float?
-  features      String?   @db.Text // JSON string
-  status        String    @default("available") // available, sold, rented, reserved
-  featured      Boolean   @default(false)
-  published     Boolean   @default(true)
-  views         Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  referenceCode    String?   @unique
+  title            String
+  slug             String    @unique
+  shortDescription String?
+  description      String    @db.Text
+  operation        String
+  type             String
+  price            Float
+  currency         String    @default("MXN")
+  bedrooms         Int?
+  bathrooms        Int?
+  area             Float?
+  lotArea          Float?
+  parking          Int?
+  yearBuilt        Int?
+  city             String
+  state            String    @default("Veracruz")
+  country          String    @default("México")
+  neighborhood     String?
+  address          String?
+  lat              Float?
+  lng              Float?
+  features         String?   @db.Text
+  status           String    @default("available")
+  featured         Boolean   @default(false)
+  published        Boolean   @default(true)
+  views            Int       @default(0)
+  contactName      String?
+  contactPhone     String?
+  contactEmail     String?
+  whatsapp         String?
+  sourceType       String?
+  sourceFolder     String?
+  sourceHash       String?
+  archivedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  photos     Photo[]
-  inquiries  Inquiry[]
+  photos    Photo[]
+  inquiries Inquiry[]
 
+  @@index([published, createdAt])
+  @@index([city])
   @@map("properties")
 }
 
 model Photo {
   id         String   @id @default(cuid())
   url        String
-  publicId   String?  // Cloudinary public_id for deletion
+  publicId   String?
   alt        String?
   order      Int      @default(0)
   isMain     Boolean  @default(false)
@@ -66,6 +81,7 @@ model Photo {
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
+  @@index([propertyId, order])
   @@map("photos")
 }
 
@@ -76,11 +92,32 @@ model Inquiry {
   phone      String?
   message    String   @db.Text
   propertyId String?
-  honeypot   String?  // Anti-spam honeypot field
+  honeypot   String?
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
 
   @@map("inquiries")
+}
+
+model ImportJob {
+  id                   String    @id @default(cuid())
+  status               String    @default("PENDING")
+  sourceType           String    @default("ADMIN_FOLDER")
+  originalFilename     String?
+  totalProperties      Int       @default(0)
+  successfulProperties Int       @default(0)
+  failedProperties     Int       @default(0)
+  skippedProperties    Int       @default(0)
+  errors               String?   @db.Text
+  createdById          String?
+  startedAt            DateTime  @default(now())
+  finishedAt           DateTime?
+  createdAt            DateTime  @default(now())
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("import_jobs")
 }
