@@ -1,14 +1,36 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
 const prisma = require('../config/db');
-const { generateToken, authMiddleware } = require('../config/auth');
+const {
+  COOKIE_NAME,
+  generateToken,
+  authMiddleware,
+} = require('../config/auth');
 
 const router = express.Router();
 
-// POST /api/auth/login
-router.post('/login', async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos de acceso. Intenta nuevamente más tarde.' },
+});
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  maxAge: 8 * 60 * 60 * 1000,
+  path: '/',
+};
+
+router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
+    const { password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña requeridos' });
@@ -25,34 +47,40 @@ router.post('/login', async (req, res) => {
     }
 
     const token = generateToken(user);
+    res.cookie(COOKIE_NAME, token, cookieOptions);
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    res.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      token,
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    return res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
-// POST /api/auth/logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
   res.json({ message: 'Sesión cerrada' });
 });
 
-// GET /api/auth/me
 router.get('/me', authMiddleware, (req, res) => {
   res.json({
-    user: { id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role },
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      role: req.user.role,
+    },
   });
 });
 
