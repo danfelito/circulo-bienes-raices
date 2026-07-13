@@ -6,104 +6,209 @@ const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudina
 
 const router = express.Router();
 
-// Multer config (memory storage for Cloudinary)
-const upload = multer({
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+]);
+
+const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten imágenes'), false);
-    }
+  limits: { fileSize: 12 * 1024 * 1024, files: 50 },
+  fileFilter: (req, file, callback) => {
+    if (ALLOWED_IMAGE_TYPES.has(file.mimetype)) callback(null, true);
+    else callback(new Error('Formato de imagen no permitido'));
   },
 });
 
-// ── PUBLIC ROUTES ──
+const toInt = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
-// GET /api/properties - List with filters & pagination
+const toFloat = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const slugify = (value = '') => value
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/(^-|-$)/g, '');
+
+const parseFeatures = (features) => {
+  if (features === null || features === undefined || features === '') return null;
+  if (Array.isArray(features)) return JSON.stringify(features);
+  if (typeof features !== 'string') return null;
+  try {
+    const parsed = JSON.parse(features);
+    return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+  } catch (_) {
+    return JSON.stringify(features.split(',').map((item) => item.trim()).filter(Boolean));
+  }
+};
+
+const normalizePropertyPayload = (body, { partial = false } = {}) => {
+  const data = {};
+  const strings = [
+    'title', 'slug', 'description', 'operation', 'type', 'currency', 'city',
+    'state', 'country', 'address', 'status', 'referenceCode', 'sourceType',
+    'sourceFolder', 'sourceHash',
+  ];
+
+  strings.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      const value = typeof body[key] === 'string' ? body[key].trim() : body[key];
+      data[key] = value || null;
+    }
+  });
+
+  const floats = ['price', 'area', 'lotArea', 'lat', 'lng'];
+  floats.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(body, key)) data[key] = toFloat(body[key]);
+  });
+
+  const integers = ['bedrooms', 'bathrooms', 'parking', 'yearBuilt'];
+  integers.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(body, key)) data[key] = toInt(body[key]);
+  });
+
+  if (Object.prototype.hasOwnProperty.call(body, 'features')) {
+    data.features = parseFeatures(body.features);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'featured')) {
+    data.featured = body.featured === true || body.featured === 'true';
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'published')) {
+    data.published = body.published === true || body.published === 'true';
+  }
+
+  if (!partial) {
+    const required = ['title', 'description', 'operation', 'type', 'city'];
+    const missing = required.filter((key) => !data[key]);
+    if (missing.length) {
+      const error = new Error(`Campos obligatorios: ${missing.join(', ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!Number.isFinite(data.price) || data.price < 0) {
+      const error = new Error('El precio debe ser un número válido');
+      error.statusCode = 400;
+      throw error;
+    }
+    data.currency = data.currency || 'MXN';
+    data.state = data.state || 'Veracruz';
+    data.country = data.country || 'México';
+    data.status = data.status || 'available';
+    data.published = data.published !== false;
+    data.featured = data.featured === true;
+  }
+
+  return data;
+};
+
+const uniqueSlug = async (requestedSlug, title, excludeId) => {
+  const base = slugify(requestedSlug || title) || `propiedad-${Date.now()}`;
+  let candidate = base;
+  let suffix = 2;
+  while (true) {
+    const existing = await prisma.property.findUnique({ where: { slug: candidate } });
+    if (!existing || existing.id === excludeId) return candidate;
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+};
+
+const getPagination = (query) => {
+  const page = Math.max(1, Number.parseInt(query.page || '1', 10));
+  const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '12', 10)));
+  return { page, limit, skip: (page - 1) * limit };
+};
+
+// Public property catalog
 router.get('/', async (req, res) => {
   try {
     const {
-      operation, type, city, minPrice, maxPrice,
-      bedrooms, bathrooms, sort, page = 1, limit = 12,
-      search, featured,
+      operation, type, city, state, country, minPrice, maxPrice,
+      bedrooms, bathrooms, sort, search, featured,
     } = req.query;
-
+    const { page, limit, skip } = getPagination(req.query);
     const where = { published: true };
 
     if (operation) where.operation = operation;
     if (type) where.type = type;
     if (city) where.city = { equals: city, mode: 'insensitive' };
+    if (state) where.state = { equals: state, mode: 'insensitive' };
+    if (country) where.country = { equals: country, mode: 'insensitive' };
     if (featured === 'true') where.featured = true;
     if (minPrice || maxPrice) {
       where.price = {};
-      if (minPrice) where.price.gte = parseFloat(minPrice);
-      if (maxPrice) where.price.lte = parseFloat(maxPrice);
+      if (minPrice) where.price.gte = Number.parseFloat(minPrice);
+      if (maxPrice) where.price.lte = Number.parseFloat(maxPrice);
     }
-    if (bedrooms) where.bedrooms = { gte: parseInt(bedrooms) };
-    if (bathrooms) where.bathrooms = { gte: parseInt(bathrooms) };
+    if (bedrooms) where.bedrooms = { gte: Number.parseInt(bedrooms, 10) };
+    if (bathrooms) where.bathrooms = { gte: Number.parseInt(bathrooms, 10) };
     if (search) {
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
         { city: { contains: search, mode: 'insensitive' } },
+        { state: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    // Sorting
-    let orderBy = { createdAt: 'desc' };
-    if (sort === 'price_asc') orderBy = { price: 'asc' };
-    if (sort === 'price_desc') orderBy = { price: 'desc' };
-    if (sort === 'newest') orderBy = { createdAt: 'desc' };
-    if (sort === 'area_desc') orderBy = { area: 'desc' };
+    const sortOptions = {
+      price_asc: { price: 'asc' },
+      price_desc: { price: 'desc' },
+      oldest: { createdAt: 'asc' },
+      newest: { createdAt: 'desc' },
+      area_asc: { area: 'asc' },
+      area_desc: { area: 'desc' },
+    };
+    const orderBy = sortOptions[sort] || { createdAt: 'desc' };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
     const [properties, total] = await Promise.all([
       prisma.property.findMany({
         where,
         orderBy,
         skip,
-        take: parseInt(limit),
-        include: {
-          photos: { orderBy: { order: 'asc' } },
-        },
+        take: limit,
+        include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
       }),
       prisma.property.count({ where }),
     ]);
 
     res.json({
       properties,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit)),
-      },
+      data: properties,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {
     console.error('Get properties error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    res.status(500).json({ error: 'Error al cargar propiedades' });
   }
 });
 
-// GET /api/properties/featured
 router.get('/featured', async (req, res) => {
   try {
     const properties = await prisma.property.findMany({
       where: { featured: true, published: true },
       orderBy: { createdAt: 'desc' },
       take: 6,
-      include: { photos: { orderBy: { order: 'asc' } } },
+      include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
     });
     res.json(properties);
   } catch (error) {
     console.error('Get featured error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    res.status(500).json({ error: 'Error al cargar propiedades destacadas' });
   }
 });
 
-// GET /api/properties/cities
 router.get('/cities', async (req, res) => {
   try {
     const cities = await prisma.property.findMany({
@@ -112,31 +217,74 @@ router.get('/cities', async (req, res) => {
       distinct: ['city'],
       orderBy: { city: 'asc' },
     });
-    res.json(cities.map(c => c.city));
+    res.json(cities.map(({ city }) => city));
   } catch (error) {
-    res.status(500).json({ error: 'Error del servidor' });
+    res.status(500).json({ error: 'Error al cargar ciudades' });
   }
 });
 
-// GET /api/properties/:slug
-router.get('/:slug', async (req, res) => {
+// Administrative inventory includes drafts and unpublished properties.
+router.get('/admin/all', authMiddleware, async (req, res) => {
+  try {
+    const { page, limit, skip } = getPagination(req.query);
+    const where = {};
+    if (req.query.search) {
+      where.OR = [
+        { title: { contains: req.query.search, mode: 'insensitive' } },
+        { city: { contains: req.query.search, mode: 'insensitive' } },
+        { referenceCode: { contains: req.query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (req.query.published === 'true') where.published = true;
+    if (req.query.published === 'false') where.published = false;
+
+    const [properties, total] = await Promise.all([
+      prisma.property.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+        include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
+      }),
+      prisma.property.count({ where }),
+    ]);
+
+    res.json({
+      properties,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    console.error('Get admin properties error:', error);
+    res.status(500).json({ error: 'Error al cargar el inventario' });
+  }
+});
+
+router.get('/admin/:id', authMiddleware, async (req, res) => {
   try {
     const property = await prisma.property.findUnique({
-      where: { slug: req.params.slug },
-      include: { photos: { orderBy: { order: 'asc' } } },
+      where: { id: req.params.id },
+      include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
     });
+    if (!property) return res.status(404).json({ error: 'Propiedad no encontrada' });
+    return res.json(property);
+  } catch (error) {
+    return res.status(500).json({ error: 'Error al cargar la propiedad' });
+  }
+});
 
-    if (!property) {
-      return res.status(404).json({ error: 'Propiedad no encontrada' });
-    }
+router.get('/:slug', async (req, res) => {
+  try {
+    const property = await prisma.property.findFirst({
+      where: { slug: req.params.slug, published: true },
+      include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
+    });
+    if (!property) return res.status(404).json({ error: 'Propiedad no encontrada' });
 
-    // Increment views
     await prisma.property.update({
       where: { id: property.id },
       data: { views: { increment: 1 } },
     });
 
-    // Get related properties
     const related = await prisma.property.findMany({
       where: {
         published: true,
@@ -148,179 +296,170 @@ router.get('/:slug', async (req, res) => {
         ],
       },
       take: 3,
-      include: { photos: { orderBy: { order: 'asc' } } },
+      include: { photos: { orderBy: [{ isMain: 'desc' }, { order: 'asc' }] } },
     });
 
-    res.json({ property, related });
+    return res.json({ property, related });
   } catch (error) {
     console.error('Get property error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    return res.status(500).json({ error: 'Error al cargar la propiedad' });
   }
 });
 
-// ── ADMIN ROUTES ──
-
-// POST /api/properties - Create
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, async (req, res, next) => {
   try {
-    const propertyData = req.body;
-    
-    // Generate slug from title
-    if (!propertyData.slug) {
-      propertyData.slug = propertyData.title
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '');
-    }
-
-    // Ensure slug is unique
-    const existing = await prisma.property.findUnique({ where: { slug: propertyData.slug } });
-    if (existing) {
-      propertyData.slug = propertyData.slug + '-' + Date.now();
-    }
-
-    const property = await prisma.property.create({ data: propertyData });
+    const data = normalizePropertyPayload(req.body);
+    data.slug = await uniqueSlug(data.slug, data.title);
+    data.sourceType = data.sourceType || 'MANUAL';
+    const property = await prisma.property.create({ data });
     res.status(201).json(property);
   } catch (error) {
-    console.error('Create property error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    next(error);
   }
 });
 
-// PUT /api/properties/:id - Update
-router.put('/:id', authMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const property = await prisma.property.update({
-      where: { id },
-      data: req.body,
-    });
-    res.json(property);
+    const current = await prisma.property.findUnique({ where: { id: req.params.id } });
+    if (!current) return res.status(404).json({ error: 'Propiedad no encontrada' });
+    const data = normalizePropertyPayload(req.body, { partial: true });
+    if (data.slug || data.title) {
+      data.slug = await uniqueSlug(data.slug || current.slug, data.title || current.title, current.id);
+    }
+    const property = await prisma.property.update({ where: { id: current.id }, data });
+    return res.json(property);
   } catch (error) {
-    console.error('Update property error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    return next(error);
   }
 });
 
-// DELETE /api/properties/:id
+// Archive by default instead of destroying business data.
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    // Delete photos from Cloudinary first
-    const photos = await prisma.photo.findMany({ where: { propertyId: id } });
-    for (const photo of photos) {
-      if (photo.publicId) {
-        await deleteFromCloudinary(photo.publicId);
-      }
-    }
-
-    await prisma.property.delete({ where: { id } });
-    res.json({ message: 'Propiedad eliminada' });
+    const property = await prisma.property.update({
+      where: { id: req.params.id },
+      data: { published: false, status: 'archived', archivedAt: new Date() },
+    });
+    res.json({ message: 'Propiedad archivada', property });
   } catch (error) {
-    console.error('Delete property error:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    res.status(404).json({ error: 'Propiedad no encontrada' });
   }
 });
 
-// PATCH /api/properties/:id/status - Change status
 router.patch('/:id/status', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
+    const allowed = new Set(['available', 'sold', 'rented', 'reserved', 'archived']);
+    if (!allowed.has(req.body.status)) {
+      return res.status(400).json({ error: 'Estado no permitido' });
+    }
     const property = await prisma.property.update({
-      where: { id },
-      data: { status },
+      where: { id: req.params.id },
+      data: { status: req.body.status },
     });
-    res.json(property);
+    return res.json(property);
   } catch (error) {
-    res.status(500).json({ error: 'Error del servidor' });
+    return res.status(500).json({ error: 'Error al cambiar el estado' });
   }
 });
 
-// POST /api/properties/:id/photos - Upload photos
-router.post('/:id/photos', authMiddleware, upload.array('photos', 10), async (req, res) => {
+router.patch('/:id/published', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const property = await prisma.property.findUnique({ where: { id } });
-    if (!property) {
-      return res.status(404).json({ error: 'Propiedad no encontrada' });
-    }
+    const property = await prisma.property.update({
+      where: { id: req.params.id },
+      data: { published: req.body.published === true },
+    });
+    return res.json(property);
+  } catch (error) {
+    return res.status(500).json({ error: 'Error al cambiar la publicación' });
+  }
+});
+
+router.post('/:id/photos', authMiddleware, imageUpload.array('photos', 50), async (req, res) => {
+  const uploadedCloudinaryIds = [];
+  try {
+    const property = await prisma.property.findUnique({ where: { id: req.params.id } });
+    if (!property) return res.status(404).json({ error: 'Propiedad no encontrada' });
+    if (!req.files?.length) return res.status(400).json({ error: 'Selecciona al menos una imagen' });
 
     const existingPhotos = await prisma.photo.findMany({
-      where: { propertyId: id },
+      where: { propertyId: property.id },
       orderBy: { order: 'desc' },
     });
-    let nextOrder = existingPhotos.length > 0 ? existingPhotos[0].order + 1 : 0;
-
+    let nextOrder = existingPhotos.length ? existingPhotos[0].order + 1 : 0;
     const uploadedPhotos = [];
+
     for (const file of req.files) {
       const result = await uploadToCloudinary(file.buffer, {
-        folder: `circulo-bienes-raices/${id}`,
+        folder: `circulo-bienes-raices/properties/${property.id}`,
       });
-
+      uploadedCloudinaryIds.push(result.public_id);
+      const isFirstPhoto = existingPhotos.length === 0 && uploadedPhotos.length === 0;
       const photo = await prisma.photo.create({
         data: {
           url: result.secure_url,
           publicId: result.public_id,
-          alt: req.body.alt || property.title,
-          order: nextOrder++,
-          isMain: nextOrder === 1,
-          propertyId: id,
+          alt: property.title,
+          order: nextOrder,
+          isMain: isFirstPhoto,
+          propertyId: property.id,
         },
       });
+      nextOrder += 1;
       uploadedPhotos.push(photo);
     }
 
-    res.status(201).json(uploadedPhotos);
+    return res.status(201).json(uploadedPhotos);
   } catch (error) {
+    await Promise.allSettled(uploadedCloudinaryIds.map((publicId) => deleteFromCloudinary(publicId)));
     console.error('Upload photos error:', error);
-    res.status(500).json({ error: 'Error al subir fotos' });
+    return res.status(500).json({ error: 'Error al subir fotos' });
   }
 });
 
-// DELETE /api/properties/:propertyId/photos/:photoId
 router.delete('/:propertyId/photos/:photoId', authMiddleware, async (req, res) => {
   try {
-    const { photoId } = req.params;
-    const photo = await prisma.photo.findUnique({ where: { id: photoId } });
-    if (!photo) {
-      return res.status(404).json({ error: 'Foto no encontrada' });
-    }
+    const photo = await prisma.photo.findFirst({
+      where: { id: req.params.photoId, propertyId: req.params.propertyId },
+    });
+    if (!photo) return res.status(404).json({ error: 'Foto no encontrada' });
+    if (photo.publicId) await deleteFromCloudinary(photo.publicId);
+    await prisma.photo.delete({ where: { id: photo.id } });
 
-    if (photo.publicId) {
-      await deleteFromCloudinary(photo.publicId);
+    if (photo.isMain) {
+      const replacement = await prisma.photo.findFirst({
+        where: { propertyId: req.params.propertyId },
+        orderBy: { order: 'asc' },
+      });
+      if (replacement) {
+        await prisma.photo.update({ where: { id: replacement.id }, data: { isMain: true } });
+      }
     }
-
-    await prisma.photo.delete({ where: { id: photoId } });
-    res.json({ message: 'Foto eliminada' });
+    return res.json({ message: 'Foto eliminada' });
   } catch (error) {
-    res.status(500).json({ error: 'Error del servidor' });
+    return res.status(500).json({ error: 'Error al eliminar la foto' });
   }
 });
 
-// PATCH /api/properties/:propertyId/photos/:photoId/main - Set main photo
 router.patch('/:propertyId/photos/:photoId/main', authMiddleware, async (req, res) => {
   try {
-    const { propertyId, photoId } = req.params;
-
-    // Unset current main
-    await prisma.photo.updateMany({
-      where: { propertyId, isMain: true },
-      data: { isMain: false },
+    const photo = await prisma.photo.findFirst({
+      where: { id: req.params.photoId, propertyId: req.params.propertyId },
     });
+    if (!photo) return res.status(404).json({ error: 'Foto no encontrada' });
 
-    // Set new main
-    await prisma.photo.update({
-      where: { id: photoId },
-      data: { isMain: true, order: 0 },
-    });
-
-    res.json({ message: 'Foto principal actualizada' });
+    await prisma.$transaction([
+      prisma.photo.updateMany({
+        where: { propertyId: req.params.propertyId, isMain: true },
+        data: { isMain: false },
+      }),
+      prisma.photo.update({
+        where: { id: photo.id },
+        data: { isMain: true, order: 0 },
+      }),
+    ]);
+    return res.json({ message: 'Foto principal actualizada' });
   } catch (error) {
-    res.status(500).json({ error: 'Error del servidor' });
+    return res.status(500).json({ error: 'Error al actualizar la foto principal' });
   }
 });
 
