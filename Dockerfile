@@ -3,40 +3,38 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Backend
+# Backend dependencies and Prisma client
 COPY backend/package*.json ./backend/
 WORKDIR /app/backend
-RUN npm ci --only=production
-
-COPY backend/ ./ 
+RUN npm ci
+COPY backend/ ./
 RUN npx prisma generate
 
-# Frontend
+# Frontend build
 WORKDIR /app
 COPY frontend/package*.json ./frontend/
 WORKDIR /app/frontend
 RUN npm ci
-
 COPY frontend/ ./
 RUN npm run build
 
 # ---- Production Stage ----
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/backend
 
-# Copy backend
+# Keep Prisma CLI available for production migrations
 COPY --from=builder /app/backend/node_modules ./node_modules
 COPY --from=builder /app/backend/ ./
+COPY --from=builder /app/frontend/dist /app/frontend/dist
 
-# Copy frontend build
-COPY --from=builder /app/frontend/dist ./frontend/dist
-
-# Environment
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=10000
 
-EXPOSE 5000
+EXPOSE 10000
 
-# Run migrations on startup then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT}/api/health || exit 1
+
+# Apply migrations, create the initial administrator idempotently, then start Express
+CMD ["sh", "-c", "npx prisma migrate deploy && node prisma/seed.js && node src/index.js"]
