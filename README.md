@@ -1,115 +1,157 @@
 # Círculo Internacional de Bienes Raíces
 
-Plataforma inmobiliaria completa con frontend React y backend Express + Prisma + PostgreSQL.
+Plataforma inmobiliaria con frontend React/Vite, API Express, PostgreSQL mediante Prisma y almacenamiento de fotografías en Cloudinary.
 
-## Arquitectura
+## Funcionalidades
 
-Monorepo con **frontend React** + **backend Express** + **Prisma ORM** + **PostgreSQL**, desplegable como un solo servicio Docker en Render.
-
-### Backend (Express + Prisma + PostgreSQL)
-- **Modelos**: Property (27 campos), Photo, Inquiry, User
-- **Autenticación**: JWT en cookie HttpOnly + bcrypt
-- **API Pública**: GET /api/properties (filtros, paginación), GET /api/properties/:slug, GET /api/properties/featured, POST /api/inquiries
-- **API Admin**: CRUD completo de propiedades, cambio de estado, estadísticas, gestión de consultas
-- **Fotos**: Cloudinary (persistencia entre despliegues)
-- **Seguridad**: Helmet, CORS, Rate Limit, Compression, Honeypot anti-spam
-
-### Frontend (React + Tailwind + Framer Motion)
-- **Catálogo**: Filtros por operación/tipo/ciudad, búsqueda, paginación, ordenamiento
-- **Detalle de propiedad**: Galería, mapa Leaflet, formulario de contacto, WhatsApp, propiedades relacionadas
-- **Panel Admin**: Dashboard con estadísticas, CRUD propiedades, gestión de fotos, consultas
-- **Login Admin**: /admin/login
+- Catálogo público con filtros, paginación y página individual por propiedad.
+- Panel administrativo protegido por cookie HttpOnly.
+- Creación y edición manual de propiedades.
+- Publicación, ocultamiento y archivo recuperable.
+- Gestión de fotografías y portada en Cloudinary.
+- Importación masiva mediante carpeta local o archivo ZIP.
+- Una subcarpeta por propiedad, definida mediante `propiedad.json`.
+- Importaciones idempotentes mediante `referenceCode` y `sourceHash`.
+- Registro de importaciones exitosas, omitidas y fallidas.
+- Health check de aplicación y PostgreSQL en `/api/health`.
+- Despliegue Docker en Render.
 
 ## Rutas
 
 | Ruta | Descripción |
-|------|-------------|
-| `/` | Landing page |
-| `/propiedades` | Catálogo con filtros |
-| `/propiedades/:slug` | Detalle de propiedad |
-| `/admin/login` | Login administración |
-| `/admin` | Dashboard administración |
-| `/admin/propiedades/nueva` | Crear propiedad |
-| `/admin/propiedades/:id/editar` | Editar propiedad |
-| `/admin/consultas` | Gestión de consultas |
+|---|---|
+| `/` | Página principal |
+| `/propiedades` | Catálogo público |
+| `/propiedades/:slug` | Detalle público |
+| `/admin/login` | Inicio de sesión |
+| `/admin` | Dashboard |
+| `/admin/propiedades` | Inventario completo |
+| `/admin/propiedades/nueva` | Alta manual |
+| `/admin/propiedades/:id/editar` | Edición |
+| `/admin/importar` | Importación de carpetas o ZIP |
+| `/admin/consultas` | Solicitudes de clientes |
 
-## Desarrollo Local
+## Estructura para importar propiedades
+
+```text
+propiedades/
+├── casa-vista-real/
+│   ├── propiedad.json
+│   ├── portada.jpg
+│   ├── 01-sala.jpg
+│   └── 02-cocina.jpg
+└── departamento-centro/
+    ├── propiedad.json
+    ├── portada.webp
+    └── 01-vista.webp
+```
+
+Ejemplo mínimo:
+
+```json
+{
+  "referenceCode": "MX-VER-0001",
+  "title": "Casa en Boca del Río",
+  "description": "Casa de tres recámaras con jardín.",
+  "operationType": "SALE",
+  "propertyType": "Casa",
+  "price": {
+    "amount": 4500000,
+    "currency": "MXN"
+  },
+  "status": "PUBLISHED",
+  "location": {
+    "country": "México",
+    "state": "Veracruz",
+    "city": "Boca del Río"
+  },
+  "features": {
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "parkingSpaces": 2,
+    "builtAreaM2": 220
+  },
+  "cover": "portada.jpg"
+}
+```
+
+El importador también admite `images` con metadatos, amenidades, coordenadas y datos de contacto. Consulta `docs/PROPERTY_FOLDER_FORMAT.md`.
+
+## Desarrollo local
 
 ```bash
-# 1. Instalar dependencias
-cd backend && npm install
-cd ../frontend && npm install
-
-# 2. Configurar .env en backend/
-cp backend/.env.example backend/.env
-# Editar DATABASE_URL, JWT_SECRET, Cloudinary, Admin credentials
-
-# 3. Base de datos
 cd backend
+npm ci
+cp .env.example .env
 npx prisma migrate dev
-npm run seed
-
-# 4. Iniciar backend
-npm run dev
-
-# 5. Iniciar frontend (en otra terminal)
-cd ../frontend
+node prisma/init-admin.js
 npm run dev
 ```
+
+En otra terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000`
+
+El proxy de Vite dirige `/api` al backend durante el desarrollo.
+
+## Variables de entorno
+
+```dotenv
+DATABASE_URL=
+JWT_SECRET=
+COOKIE_NAME=circulo_admin_session
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+NODE_ENV=production
+```
+
+`ADMIN_PASSWORD` debe tener al menos 12 caracteres. Las credenciales reales nunca deben guardarse en GitHub.
 
 ## Despliegue en Render
 
-### Configuración necesaria:
+El archivo `render.yaml` declara:
 
-1. **Push a GitHub**: `git push origin main`
-2. **Crear PostgreSQL** en Render → copiar URL a `DATABASE_URL`
-3. **Configurar Cloudinary**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-4. **Configurar admin**: `ADMIN_EMAIL` y `ADMIN_PASSWORD`
-5. **JWT_SECRET**: Generar un string aleatorio seguro (Render lo puede generar automáticamente)
+- Servicio Docker `circulo-bienes-raices-1`.
+- Base PostgreSQL `circulo-bienes-raices-db`.
+- `DATABASE_URL` enlazada mediante `fromDatabase`.
+- Health check `/api/health`.
+- Secretos solicitados desde el panel de Render.
 
-### Crear servicio en Render:
-- Conectar repo `danfelito/circulo-bienes-raices`
-- Seleccionar **Docker** como runtime
-- El `render.yaml` configura todo automáticamente
+Antes del primer despliegue configura en Render:
 
-## Estructura
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
 
+`JWT_SECRET` se genera automáticamente mediante el Blueprint. Al arrancar, el contenedor ejecuta las migraciones y crea el administrador si todavía no existe.
+
+> La base gratuita de Render expira después del periodo definido por Render. Para producción permanente se recomienda actualizarla a un plan con persistencia y copias de seguridad.
+
+## Comprobaciones
+
+```bash
+cd backend
+npm ci
+npx prisma validate
+npx prisma generate
+
+cd ../frontend
+npm ci
+npm run build
+
+docker build -t circulo-bienes-raices .
 ```
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   ├── seed.js
-│   │   └── migrations/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── auth.js
-│   │   │   ├── cloudinary.js
-│   │   │   └── db.js
-│   │   ├── routes/
-│   │   │   ├── auth.js
-│   │   │   ├── properties.js
-│   │   │   ├── inquiries.js
-│   │   │   └── stats.js
-│   │   └── index.js
-│   ├── .env.example
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── api/index.js
-│   │   ├── components/
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── PropertiesPage.jsx
-│   │   │   ├── PropertyDetailPage.jsx
-│   │   │   └── admin/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-├── Dockerfile
-├── render.yaml
-└── .gitignore
-```
+
+GitHub Actions ejecuta la validación de Prisma, la revisión sintáctica del backend y el build del frontend en cada pull request.
