@@ -4,8 +4,9 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache python3 make g++ openssl
 WORKDIR /app
 
-# Backend dependencies and Prisma client
+# Backend dependencies and Prisma client. Prisma's postinstall needs the schema.
 COPY backend/package*.json ./backend/
+COPY backend/prisma ./backend/prisma
 WORKDIR /app/backend
 RUN npm ci
 COPY backend/ ./
