@@ -15,9 +15,8 @@ const AdminLogin = () => {
     setError('');
     setLoading(true);
     try {
-      const data = await api.login(email, password);
-      localStorage.setItem('token', data.token);
-      navigate('/admin');
+      await api.login(email, password);
+      navigate('/admin', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -50,10 +49,11 @@ const AdminLogin = () => {
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="username"
                 className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-amber-400/50 focus:outline-none"
-                placeholder="admin@circulo.com"
+                placeholder="administrador@dominio.com"
               />
             </div>
           </div>
@@ -65,10 +65,11 @@ const AdminLogin = () => {
               <input
                 type="password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-amber-400/50 focus:outline-none"
-                placeholder="••••••••"
+                placeholder="••••••••••••"
               />
             </div>
           </div>
