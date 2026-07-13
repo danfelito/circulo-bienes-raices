@@ -21,17 +21,18 @@ model User {
 
 model Property {
   id            String    @id @default(cuid())
+  referenceCode String?   @unique
   title         String
   slug          String    @unique
   description   String    @db.Text
-  operation     String    // venta, renta
-  type          String    // casa, departamento, terreno, oficina, local, otros
+  operation     String
+  type          String
   price         Float
   currency      String    @default("MXN")
   bedrooms      Int?
-  bathrooms     Int?
-  area          Float?    // m2 construcción
-  lotArea       Float?    // m2 terreno
+  bathrooms     Float?
+  area          Float?
+  lotArea       Float?
   parking       Int?
   yearBuilt     Int?
   city          String
@@ -40,24 +41,30 @@ model Property {
   address       String?
   lat           Float?
   lng           Float?
-  features      String?   @db.Text // JSON string
-  status        String    @default("available") // available, sold, rented, reserved
+  features      String?   @db.Text
+  status        String    @default("available")
   featured      Boolean   @default(false)
   published     Boolean   @default(true)
   views         Int       @default(0)
+  sourceType    String    @default("MANUAL")
+  sourceFolder  String?
+  sourceHash    String?
+  archivedAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  photos     Photo[]
-  inquiries  Inquiry[]
+  photos    Photo[]
+  inquiries Inquiry[]
 
+  @@index([published, createdAt])
+  @@index([city])
   @@map("properties")
 }
 
 model Photo {
   id         String   @id @default(cuid())
   url        String
-  publicId   String?  // Cloudinary public_id for deletion
+  publicId   String?
   alt        String?
   order      Int      @default(0)
   isMain     Boolean  @default(false)
@@ -66,6 +73,7 @@ model Photo {
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
+  @@index([propertyId, order])
   @@map("photos")
 }
 
@@ -76,11 +84,30 @@ model Inquiry {
   phone      String?
   message    String   @db.Text
   propertyId String?
-  honeypot   String?  // Anti-spam honeypot field
+  honeypot   String?
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
 
+  @@index([isRead, createdAt])
   @@map("inquiries")
+}
+
+model ImportJob {
+  id                   String    @id @default(cuid())
+  status               String    @default("PENDING")
+  sourceType           String    @default("ADMIN_FOLDER")
+  originalFilename     String?
+  totalProperties      Int       @default(0)
+  successfulProperties Int       @default(0)
+  failedProperties     Int       @default(0)
+  errors               String?   @db.Text
+  createdById          String?
+  startedAt            DateTime  @default(now())
+  finishedAt           DateTime?
+  createdAt            DateTime  @default(now())
+
+  @@index([createdAt])
+  @@map("import_jobs")
 }
