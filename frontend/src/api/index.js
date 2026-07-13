@@ -12,6 +12,25 @@ const parseResponse = async (res, fallbackMessage) => {
   throw new Error(message);
 };
 
+const uploadWithProgress = (url, formData, onProgress) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', url);
+  xhr.withCredentials = true;
+  xhr.upload.onprogress = (event) => {
+    if (event.lengthComputable && onProgress) {
+      onProgress(Math.round((event.loaded / event.total) * 100));
+    }
+  };
+  xhr.onload = () => {
+    let body = {};
+    try { body = JSON.parse(xhr.responseText || '{}'); } catch (_) { /* noop */ }
+    if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+    else reject(new Error(body.error || 'Error al cargar archivos'));
+  };
+  xhr.onerror = () => reject(new Error('No fue posible conectar con el servidor'));
+  xhr.send(formData);
+});
+
 const api = {
   login: async (email, password) => {
     const res = await fetch(`${API_BASE}/auth/login`, {
@@ -32,9 +51,7 @@ const api = {
   },
 
   getMe: async () => {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      credentials: 'include',
-    });
+    const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
     return parseResponse(res, 'No autenticado');
   },
 
@@ -50,6 +67,13 @@ const api = {
       credentials: 'include',
     });
     return parseResponse(res, 'Error al cargar propiedades administrativas');
+  },
+
+  getAdminProperty: async (id) => {
+    const res = await fetch(`${API_BASE}/properties/admin/${encodeURIComponent(id)}`, {
+      credentials: 'include',
+    });
+    return parseResponse(res, 'Propiedad no encontrada');
   },
 
   getFeatured: async () => {
@@ -92,7 +116,7 @@ const api = {
       method: 'DELETE',
       credentials: 'include',
     });
-    return parseResponse(res, 'Error al eliminar');
+    return parseResponse(res, 'Error al archivar');
   },
 
   changeStatus: async (id, status) => {
@@ -126,28 +150,23 @@ const api = {
     return parseResponse(res, 'Error al subir fotos');
   },
 
-  importPropertyFolder: async (archive, onProgress) => {
+  importPropertyArchive: async (archive, onProgress) => {
     const formData = new FormData();
     formData.append('archive', archive);
+    return uploadWithProgress(`${API_BASE}/imports/property-folder`, formData, onProgress);
+  },
 
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${API_BASE}/properties/admin/import`);
-      xhr.withCredentials = true;
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          onProgress(Math.round((event.loaded / event.total) * 100));
-        }
-      };
-      xhr.onload = () => {
-        let body = {};
-        try { body = JSON.parse(xhr.responseText || '{}'); } catch (_) { /* noop */ }
-        if (xhr.status >= 200 && xhr.status < 300) resolve(body);
-        else reject(new Error(body.error || 'Error al importar la carpeta'));
-      };
-      xhr.onerror = () => reject(new Error('No fue posible conectar con el servidor'));
-      xhr.send(formData);
-    });
+  importPropertyFiles: async ({ files, paths, folderName }, onProgress) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file, file.name));
+    formData.append('paths', JSON.stringify(paths));
+    formData.append('folderName', folderName || 'carpeta-seleccionada');
+    return uploadWithProgress(`${API_BASE}/imports/property-folder`, formData, onProgress);
+  },
+
+  getImportJobs: async () => {
+    const res = await fetch(`${API_BASE}/imports`, { credentials: 'include' });
+    return parseResponse(res, 'Error al cargar importaciones');
   },
 
   deletePhoto: async (propertyId, photoId) => {
@@ -200,9 +219,7 @@ const api = {
   },
 
   getStats: async () => {
-    const res = await fetch(`${API_BASE}/stats`, {
-      credentials: 'include',
-    });
+    const res = await fetch(`${API_BASE}/stats`, { credentials: 'include' });
     return parseResponse(res, 'Error al cargar estadísticas');
   },
 };
