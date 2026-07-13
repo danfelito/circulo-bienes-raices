@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth');
 const propertyRoutes = require('./routes/properties');
 const inquiryRoutes = require('./routes/inquiries');
 const statsRoutes = require('./routes/stats');
+const importRoutes = require('./routes/imports');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 10000;
@@ -64,6 +65,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/imports', importRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado' });
