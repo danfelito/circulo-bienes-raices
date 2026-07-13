@@ -30,7 +30,7 @@ model Property {
   price         Float
   currency      String    @default("MXN")
   bedrooms      Int?
-  bathrooms     Int?
+  bathrooms     Float?
   area          Float?
   lotArea       Float?
   parking       Int?
@@ -106,7 +106,7 @@ model ImportJob {
   createdById          String?
   startedAt            DateTime  @default(now())
   finishedAt           DateTime?
-  createdAt             DateTime  @default(now())
+  createdAt            DateTime  @default(now())
 
   @@index([createdAt])
   @@map("import_jobs")
