@@ -1,115 +1,164 @@
 # Círculo Internacional de Bienes Raíces
 
-Plataforma inmobiliaria completa con frontend React y backend Express + Prisma + PostgreSQL.
+Plataforma inmobiliaria con frontend React, API Express, PostgreSQL mediante Prisma y almacenamiento de fotografías en Cloudinary. El frontend y la API se ejecutan en un único contenedor Docker compatible con Render.
 
-## Arquitectura
+## Funciones
 
-Monorepo con **frontend React** + **backend Express** + **Prisma ORM** + **PostgreSQL**, desplegable como un solo servicio Docker en Render.
+- Catálogo público con búsqueda, filtros y paginación.
+- Página individual de cada propiedad.
+- Panel administrativo protegido mediante cookie HttpOnly.
+- Creación y edición manual de propiedades.
+- Publicación, despublicación, destacados y archivado.
+- Importación de propiedades desde una carpeta local o un archivo ZIP.
+- Fotografías persistentes en Cloudinary.
+- Migraciones automáticas de PostgreSQL.
+- Health check en `/api/health`.
 
-### Backend (Express + Prisma + PostgreSQL)
-- **Modelos**: Property (27 campos), Photo, Inquiry, User
-- **Autenticación**: JWT en cookie HttpOnly + bcrypt
-- **API Pública**: GET /api/properties (filtros, paginación), GET /api/properties/:slug, GET /api/properties/featured, POST /api/inquiries
-- **API Admin**: CRUD completo de propiedades, cambio de estado, estadísticas, gestión de consultas
-- **Fotos**: Cloudinary (persistencia entre despliegues)
-- **Seguridad**: Helmet, CORS, Rate Limit, Compression, Honeypot anti-spam
-
-### Frontend (React + Tailwind + Framer Motion)
-- **Catálogo**: Filtros por operación/tipo/ciudad, búsqueda, paginación, ordenamiento
-- **Detalle de propiedad**: Galería, mapa Leaflet, formulario de contacto, WhatsApp, propiedades relacionadas
-- **Panel Admin**: Dashboard con estadísticas, CRUD propiedades, gestión de fotos, consultas
-- **Login Admin**: /admin/login
-
-## Rutas
+## Rutas principales
 
 | Ruta | Descripción |
-|------|-------------|
-| `/` | Landing page |
-| `/propiedades` | Catálogo con filtros |
-| `/propiedades/:slug` | Detalle de propiedad |
-| `/admin/login` | Login administración |
-| `/admin` | Dashboard administración |
-| `/admin/propiedades/nueva` | Crear propiedad |
-| `/admin/propiedades/:id/editar` | Editar propiedad |
-| `/admin/consultas` | Gestión de consultas |
+|---|---|
+| `/` | Página principal |
+| `/propiedades` | Catálogo público |
+| `/propiedades/:slug` | Detalle público |
+| `/admin/login` | Acceso administrativo |
+| `/admin` | Dashboard |
+| `/admin/propiedades` | Inventario completo |
+| `/admin/propiedades/nueva` | Alta manual |
+| `/admin/propiedades/:id/editar` | Edición |
+| `/admin/importar` | Importación por carpetas o ZIP |
+| `/admin/consultas` | Solicitudes de clientes |
+| `/api/health` | Estado del servicio y la base de datos |
 
-## Desarrollo Local
+## Formato de carpetas
+
+Cada subcarpeta representa una propiedad:
+
+```text
+propiedades/
+├── casa-costa-de-oro/
+│   ├── propiedad.json
+│   ├── portada.jpg
+│   ├── 01-sala.jpg
+│   └── 02-cocina.jpg
+└── departamento-boca-del-rio/
+    ├── propiedad.json
+    ├── portada.webp
+    └── 01-vista.webp
+```
+
+Ejemplo de `propiedad.json`:
+
+```json
+{
+  "referenceCode": "MX-VER-0001",
+  "slug": "casa-costa-de-oro",
+  "title": "Casa en Costa de Oro",
+  "description": "Residencia con jardín y excelente ubicación.",
+  "operationType": "SALE",
+  "propertyType": "Casa",
+  "status": "PUBLISHED",
+  "featured": true,
+  "price": {
+    "amount": 8500000,
+    "currency": "MXN"
+  },
+  "location": {
+    "country": "México",
+    "state": "Veracruz",
+    "city": "Boca del Río",
+    "address": "Costa de Oro",
+    "latitude": 19.1738,
+    "longitude": -96.1342
+  },
+  "features": {
+    "bedrooms": 4,
+    "bathrooms": 4.5,
+    "parkingSpaces": 3,
+    "builtAreaM2": 380,
+    "landAreaM2": 500,
+    "yearBuilt": 2022
+  },
+  "amenities": ["Alberca", "Jardín", "Seguridad"],
+  "cover": "portada.jpg",
+  "images": [
+    { "file": "portada.jpg", "alt": "Fachada", "isCover": true, "order": 0 },
+    { "file": "01-sala.jpg", "alt": "Sala", "order": 1 }
+  ]
+}
+```
+
+La importación es idempotente. `referenceCode` identifica la propiedad; si el contenido no cambió se omite, y si cambió se actualizan los datos y fotografías sin crear duplicados.
+
+Estados admitidos en el manifiesto:
+
+- `PUBLISHED`: visible públicamente.
+- `DRAFT`: guardada únicamente en el panel.
+- `ARCHIVED`: retirada del catálogo.
+
+## Desarrollo local
 
 ```bash
-# 1. Instalar dependencias
-cd backend && npm install
-cd ../frontend && npm install
-
-# 2. Configurar .env en backend/
 cp backend/.env.example backend/.env
-# Editar DATABASE_URL, JWT_SECRET, Cloudinary, Admin credentials
 
-# 3. Base de datos
 cd backend
+npm ci
+npx prisma generate
 npx prisma migrate dev
-npm run seed
-
-# 4. Iniciar backend
-npm run dev
-
-# 5. Iniciar frontend (en otra terminal)
-cd ../frontend
+node prisma/seed.js
 npm run dev
 ```
+
+En otra terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Frontend: `http://localhost:5173`
+
+Backend: `http://localhost:5000`
+
+## Variables de entorno
+
+```dotenv
+DATABASE_URL=postgresql://...
+JWT_SECRET=un-secreto-aleatorio-de-32-caracteres-o-mas
+COOKIE_NAME=circulo_admin_session
+ADMIN_EMAIL=administrador@dominio.com
+ADMIN_PASSWORD=una-contrasena-segura-de-12-caracteres-o-mas
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+APP_URL=https://circulo-bienes-raices-1.onrender.com
+NODE_ENV=production
+```
+
+No guardes valores reales en el repositorio.
 
 ## Despliegue en Render
 
-### Configuración necesaria:
+1. Conecta el repositorio `danfelito/circulo-bienes-raices` al servicio existente.
+2. Usa Docker como runtime y la raíz del repositorio como contexto.
+3. Configura todas las variables anteriores en **Environment**.
+4. Cambia inmediatamente cualquier contraseña que haya estado expuesta anteriormente.
+5. Despliega la rama deseada.
+6. El contenedor ejecutará:
+   - `prisma migrate deploy`;
+   - creación idempotente del administrador;
+   - inicio de Express.
+7. Verifica primero `/api/health` y después `/admin/login`.
 
-1. **Push a GitHub**: `git push origin main`
-2. **Crear PostgreSQL** en Render → copiar URL a `DATABASE_URL`
-3. **Configurar Cloudinary**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-4. **Configurar admin**: `ADMIN_EMAIL` y `ADMIN_PASSWORD`
-5. **JWT_SECRET**: Generar un string aleatorio seguro (Render lo puede generar automáticamente)
+El archivo `render.yaml` incluye el health check y marca todos los secretos como valores configurables fuera del repositorio.
 
-### Crear servicio en Render:
-- Conectar repo `danfelito/circulo-bienes-raices`
-- Seleccionar **Docker** como runtime
-- El `render.yaml` configura todo automáticamente
+## Validación
 
-## Estructura
+GitHub Actions ejecuta:
 
-```
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   ├── seed.js
-│   │   └── migrations/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── auth.js
-│   │   │   ├── cloudinary.js
-│   │   │   └── db.js
-│   │   ├── routes/
-│   │   │   ├── auth.js
-│   │   │   ├── properties.js
-│   │   │   ├── inquiries.js
-│   │   │   └── stats.js
-│   │   └── index.js
-│   ├── .env.example
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── api/index.js
-│   │   ├── components/
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── PropertiesPage.jsx
-│   │   │   ├── PropertyDetailPage.jsx
-│   │   │   └── admin/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-├── Dockerfile
-├── render.yaml
-└── .gitignore
-```
+- instalación limpia de dependencias;
+- validación y generación de Prisma;
+- revisión sintáctica del backend;
+- build de Vite;
+- build completo de Docker.
