@@ -1,27 +1,36 @@
 services:
   - type: web
-    name: circulo-bienes-raices
+    name: circulo-bienes-raices-1
     runtime: docker
     plan: free
-    env: docker
     dockerContext: .
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: circulo-bienes-raices-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      - key: COOKIE_NAME
+        value: circulo_admin_session
       - key: ADMIN_EMAIL
-        value: admin@circulo.com
+        sync: false
       - key: ADMIN_PASSWORD
-        value: Admin123!
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-      - key: NODE_ENV
-        value: production
-      - key: CORS_ORIGIN
-        value: true
+
+databases:
+  - name: circulo-bienes-raices-db
+    plan: free
+    databaseName: circulo_bienes_raices
+    user: circulo_admin
