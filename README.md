@@ -2,114 +2,79 @@
 
 Plataforma inmobiliaria completa con frontend React y backend Express + Prisma + PostgreSQL.
 
-## Arquitectura
+## Funcionalidades principales
 
-Monorepo con **frontend React** + **backend Express** + **Prisma ORM** + **PostgreSQL**, desplegable como un solo servicio Docker en Render.
+- Identidad visual blanca, roja y negra con logotipo tipográfico adaptable.
+- Catálogo público con búsqueda, filtros, tarjetas, mapa OpenStreetMap/Leaflet y detalle multimedia.
+- Portal de asesores con solicitud de alta, autorización por correo y acceso protegido.
+- Carga de fotografías y videos en Cloudinary.
+- Publicación conectada: una propiedad creada por un asesor autorizado aparece en el catálogo público.
+- Panel administrativo existente para propiedades, consultas y estadísticas.
 
-### Backend (Express + Prisma + PostgreSQL)
-- **Modelos**: Property (27 campos), Photo, Inquiry, User
-- **Autenticación**: JWT en cookie HttpOnly + bcrypt
-- **API Pública**: GET /api/properties (filtros, paginación), GET /api/properties/:slug, GET /api/properties/featured, POST /api/inquiries
-- **API Admin**: CRUD completo de propiedades, cambio de estado, estadísticas, gestión de consultas
-- **Fotos**: Cloudinary (persistencia entre despliegues)
-- **Seguridad**: Helmet, CORS, Rate Limit, Compression, Honeypot anti-spam
+## Flujo de asesores
 
-### Frontend (React + Tailwind + Framer Motion)
-- **Catálogo**: Filtros por operación/tipo/ciudad, búsqueda, paginación, ordenamiento
-- **Detalle de propiedad**: Galería, mapa Leaflet, formulario de contacto, WhatsApp, propiedades relacionadas
-- **Panel Admin**: Dashboard con estadísticas, CRUD propiedades, gestión de fotos, consultas
-- **Login Admin**: /admin/login
+1. El asesor entra a `/asesores` y registra nombre, correo, teléfono y contraseña.
+2. El backend crea la cuenta con estado `pending`.
+3. Se envía un correo a `ADMIN_APPROVAL_EMAIL` con botones para autorizar o rechazar.
+4. Al autorizar, el asesor puede iniciar sesión y entrar a `/asesores/panel`.
+5. Desde el panel sube fotos, videos y detalles; la propiedad queda publicada y vinculada a su cuenta.
+
+## Servicios gratuitos o con plan gratuito
+
+- **Render**: despliegue del servicio Docker y PostgreSQL.
+- **Cloudinary**: almacenamiento y optimización de imágenes y videos.
+- **Resend**: correo de autorización del asesor.
+- **OpenStreetMap + Leaflet**: mapas sin licencia comercial de Google Maps.
+
+## Variables de entorno
+
+Configura las variables existentes de base de datos, autenticación, Cloudinary y servidor. Agrega también:
+
+- `APP_URL`: URL pública del servicio.
+- `ADMIN_APPROVAL_EMAIL`: correo que recibe las solicitudes; el valor previsto es `circulointernacionalveracruz1@gmail.com`.
+- `RESEND_API_KEY`: clave privada creada en Resend.
+- `RESEND_FROM_EMAIL`: remitente autorizado en Resend.
+
+Sin `RESEND_API_KEY`, el registro se conserva y los enlaces de autorización se escriben en los logs del servidor para facilitar pruebas.
 
 ## Rutas
 
 | Ruta | Descripción |
 |------|-------------|
 | `/` | Landing page |
-| `/propiedades` | Catálogo con filtros |
-| `/propiedades/:slug` | Detalle de propiedad |
+| `/propiedades` | Catálogo con filtros y mapa |
+| `/propiedades/:slug` | Detalle con fotos, videos y contacto |
+| `/asesores` | Registro e inicio de sesión de asesores |
+| `/asesores/panel` | Carga y administración de propiedades del asesor |
 | `/admin/login` | Login administración |
 | `/admin` | Dashboard administración |
 | `/admin/propiedades/nueva` | Crear propiedad |
 | `/admin/propiedades/:id/editar` | Editar propiedad |
 | `/admin/consultas` | Gestión de consultas |
 
-## Desarrollo Local
+## Desarrollo local
 
 ```bash
-# 1. Instalar dependencias
 cd backend && npm install
 cd ../frontend && npm install
 
-# 2. Configurar .env en backend/
 cp backend/.env.example backend/.env
-# Editar DATABASE_URL, JWT_SECRET, Cloudinary, Admin credentials
 
-# 3. Base de datos
 cd backend
 npx prisma migrate dev
 npm run seed
-
-# 4. Iniciar backend
 npm run dev
 
-# 5. Iniciar frontend (en otra terminal)
-cd ../frontend
+# Otra terminal
+cd frontend
 npm run dev
 ```
 
 ## Despliegue en Render
 
-### Configuración necesaria:
-
-1. **Push a GitHub**: `git push origin main`
-2. **Crear PostgreSQL** en Render → copiar URL a `DATABASE_URL`
-3. **Configurar Cloudinary**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-4. **Configurar admin**: `ADMIN_EMAIL` y `ADMIN_PASSWORD`
-5. **JWT_SECRET**: Generar un string aleatorio seguro (Render lo puede generar automáticamente)
-
-### Crear servicio en Render:
-- Conectar repo `danfelito/circulo-bienes-raices`
-- Seleccionar **Docker** como runtime
-- El `render.yaml` configura todo automáticamente
-
-## Estructura
-
-```
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   ├── seed.js
-│   │   └── migrations/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── auth.js
-│   │   │   ├── cloudinary.js
-│   │   │   └── db.js
-│   │   ├── routes/
-│   │   │   ├── auth.js
-│   │   │   ├── properties.js
-│   │   │   ├── inquiries.js
-│   │   │   └── stats.js
-│   │   └── index.js
-│   ├── .env.example
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── api/index.js
-│   │   ├── components/
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── PropertiesPage.jsx
-│   │   │   ├── PropertyDetailPage.jsx
-│   │   │   └── admin/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-├── Dockerfile
-├── render.yaml
-└── .gitignore
-```
+1. Crear o conectar PostgreSQL y copiar su URL a `DATABASE_URL`.
+2. Configurar credenciales de Cloudinary.
+3. Crear una API key en Resend y configurar las variables de correo.
+4. Configurar `APP_URL` con la URL pública final del servicio.
+5. Definir `ADMIN_EMAIL`, `ADMIN_PASSWORD` y un `JWT_SECRET` seguro.
+6. Conectar el repositorio como servicio Docker; las migraciones se aplican al iniciar.
