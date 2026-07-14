@@ -5,10 +5,10 @@ const { generateToken, authMiddleware } = require('../config/auth');
 
 const router = express.Router();
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña requeridos' });
@@ -24,17 +24,32 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    const token = generateToken(user);
+    if (user.role === 'advisor' && user.status !== 'approved') {
+      const messages = {
+        pending: 'Tu solicitud está pendiente de autorización.',
+        rejected: 'Tu solicitud de asesor no fue autorizada.',
+        suspended: 'Tu cuenta de asesor está suspendida.',
+      };
+      return res.status(403).json({ error: messages[user.status] || 'Tu cuenta no está autorizada.' });
+    }
 
+    const token = generateToken(user);
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+      },
       token,
     });
   } catch (error) {
@@ -43,16 +58,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/logout
 router.post('/logout', (req, res) => {
   res.clearCookie('token');
   res.json({ message: 'Sesión cerrada' });
 });
 
-// GET /api/auth/me
 router.get('/me', authMiddleware, (req, res) => {
   res.json({
-    user: { id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role },
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      phone: req.user.phone,
+      role: req.user.role,
+      status: req.user.status,
+    },
   });
 });
 
