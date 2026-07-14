@@ -17,7 +17,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
+  const isPrivatePanel = location.pathname.startsWith('/admin') || location.pathname.startsWith('/asesores/panel');
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -25,7 +25,7 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  if (isAdmin) return null;
+  if (isPrivatePanel) return null;
 
   const isActive = (href) => {
     if (href === '/') return location.pathname === '/';
