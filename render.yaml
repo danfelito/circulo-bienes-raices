@@ -15,6 +15,14 @@ services:
         value: admin@circulo.com
       - key: ADMIN_PASSWORD
         value: Admin123!
+      - key: APP_URL
+        sync: false
+      - key: ADMIN_APPROVAL_EMAIL
+        value: circulointernacionalveracruz1@gmail.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
