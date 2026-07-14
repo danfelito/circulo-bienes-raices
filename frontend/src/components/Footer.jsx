@@ -5,7 +5,7 @@ import BrandLogo from './BrandLogo';
 
 const Footer = () => {
   const location = useLocation();
-  if (location.pathname.startsWith('/admin')) return null;
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/asesores/panel')) return null;
 
   return (
     <footer id="contacto" className="border-t border-slate-200 bg-white">
