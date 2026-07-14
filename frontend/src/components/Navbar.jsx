@@ -1,98 +1,117 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Home, Building2, Shield } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Menu, X, UserRound } from 'lucide-react';
+import BrandLogo from './BrandLogo';
+
+const links = [
+  { href: '/', label: 'Inicio', route: true },
+  { href: '/propiedades', label: 'Propiedades', route: true },
+  { href: '/#servicios', label: 'Servicios' },
+  { href: '/#nosotros', label: 'Nosotros' },
+  { href: '/#contacto', label: 'Contacto' },
+  { href: '/asesores', label: 'Asesores', route: true },
+];
 
 const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
+  const isPrivatePanel = location.pathname.startsWith('/admin') || location.pathname.startsWith('/asesores/panel');
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const navLinks = [
-    { to: '/', label: 'Inicio', icon: Home },
-    { to: '/propiedades', label: 'Propiedades', icon: Building2 },
-    { to: '/admin', label: 'Admin', icon: Shield },
-  ];
+  if (isPrivatePanel) return null;
+
+  const isActive = (href) => {
+    if (href === '/') return location.pathname === '/';
+    return location.pathname.startsWith(href.split('#')[0]);
+  };
+
+  const itemClass = (href) => `relative text-[13px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+    isActive(href) ? 'text-[#d71920]' : 'text-slate-700 hover:text-[#d71920]'
+  }`;
 
   return (
-    <motion.nav
-      initial={{ y: -100 }}
+    <motion.header
+      initial={{ y: -80 }}
       animate={{ y: 0 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? 'bg-[#111]/95 backdrop-blur-lg shadow-lg' : 'bg-transparent'
+      className={`fixed inset-x-0 top-0 z-50 border-b transition-all ${
+        scrolled ? 'border-slate-200 bg-white/95 shadow-sm backdrop-blur-xl' : 'border-transparent bg-white/90 backdrop-blur-md'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
-              Círculo Internacional
-            </span>
-            <span className="text-xs text-gray-400 hidden sm:block">Bienes Raíces</span>
-          </Link>
+      <div className="mx-auto flex h-[78px] max-w-[1500px] items-center justify-between gap-5 px-4 sm:px-6 lg:px-8">
+        <BrandLogo compact />
 
-          <div className="hidden md:flex items-center gap-6">
-            {navLinks.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                  location.pathname === to || (to === '/admin' && isAdmin)
-                    ? 'text-amber-400'
-                    : 'text-gray-300 hover:text-amber-400'
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-              </Link>
-            ))}
-          </div>
+        <nav className="hidden items-center gap-6 lg:flex" aria-label="Navegación principal">
+          {links.map((item) => item.route ? (
+            <Link key={item.href} to={item.href} className={itemClass(item.href)}>
+              {item.label}
+              {isActive(item.href) && <span className="absolute -bottom-2 left-0 h-0.5 w-full bg-[#d71920]" />}
+            </Link>
+          ) : (
+            <a key={item.href} href={item.href} className={itemClass(item.href)}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
 
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden text-gray-300 hover:text-amber-400"
+        <div className="hidden lg:block">
+          <Link
+            to="/asesores"
+            className="inline-flex items-center gap-2 rounded-full bg-[#d71920] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b91319]"
           >
-            {isOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+            <UserRound size={17} /> Publicar propiedad
+          </Link>
         </div>
+
+        <button
+          type="button"
+          aria-label={open ? 'Cerrar menú' : 'Abrir menú'}
+          onClick={() => setOpen((value) => !value)}
+          className="rounded-lg border border-slate-200 p-2 text-slate-800 lg:hidden"
+        >
+          {open ? <X size={24} /> : <Menu size={24} />}
+        </button>
       </div>
 
       <AnimatePresence>
-        {isOpen && (
-          <motion.div
+        {open && (
+          <motion.nav
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-[#111]/95 backdrop-blur-lg border-t border-white/10"
+            className="border-t border-slate-200 bg-white lg:hidden"
           >
-            <div className="px-4 py-3 space-y-2">
-              {navLinks.map(({ to, label, icon: Icon }) => (
+            <div className="space-y-1 px-4 py-4">
+              {links.map((item) => item.route ? (
                 <Link
-                  key={to}
-                  to={to}
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                    location.pathname === to
-                      ? 'bg-amber-400/10 text-amber-400'
-                      : 'text-gray-300 hover:bg-white/5'
-                  }`}
+                  key={item.href}
+                  to={item.href}
+                  onClick={() => setOpen(false)}
+                  className="block rounded-lg px-4 py-3 font-semibold text-slate-800 hover:bg-red-50 hover:text-[#d71920]"
                 >
-                  <Icon size={16} />
-                  {label}
+                  {item.label}
                 </Link>
+              ) : (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className="block rounded-lg px-4 py-3 font-semibold text-slate-800 hover:bg-red-50 hover:text-[#d71920]"
+                >
+                  {item.label}
+                </a>
               ))}
             </div>
-          </motion.div>
+          </motion.nav>
         )}
       </AnimatePresence>
-    </motion.nav>
+    </motion.header>
   );
 };
 

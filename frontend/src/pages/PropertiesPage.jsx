@@ -1,234 +1,182 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Search, SlidersHorizontal, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Bath, BedDouble, Building2, ChevronLeft, ChevronRight, Grid2X2, List, Map as MapIcon, MapPin, Search, SlidersHorizontal, Square, Star, Video } from 'lucide-react';
 import api from '../api';
+
+const money = (value, currency = 'MXN') => new Intl.NumberFormat('es-MX', {
+  style: 'currency', currency, maximumFractionDigits: 0,
+}).format(value || 0);
+
+const createMarkerIcon = (active) => L.divIcon({
+  className: '',
+  html: `<div style="width:${active ? 42 : 34}px;height:${active ? 42 : 34}px;border-radius:999px;background:${active ? '#111827' : '#d71920'};border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,.3);display:grid;place-items:center;color:white;font-size:15px;font-weight:800;transition:.2s">$</div>`,
+  iconSize: [active ? 42 : 34, active ? 42 : 34],
+  iconAnchor: [active ? 21 : 17, active ? 21 : 17],
+});
+
+const MapFocus = ({ property }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (property?.lat && property?.lng) map.flyTo([property.lat, property.lng], Math.max(map.getZoom(), 14), { duration: 0.65 });
+  }, [property?.id]);
+  return null;
+};
+
+const PropertiesMap = ({ properties, activeId, onActivate }) => {
+  const mapped = properties.filter((property) => Number.isFinite(Number(property.lat)) && Number.isFinite(Number(property.lng)));
+  const active = properties.find((property) => property.id === activeId);
+
+  return (
+    <MapContainer center={[19.1738, -96.1342]} zoom={11} scrollWheelZoom className="h-full w-full">
+      <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <MapFocus property={active} />
+      {mapped.map((property) => (
+        <Marker
+          key={property.id}
+          position={[Number(property.lat), Number(property.lng)]}
+          icon={createMarkerIcon(property.id === activeId)}
+          eventHandlers={{ click: () => onActivate(property.id) }}
+        >
+          <Popup>
+            <div className="min-w-[210px]">
+              <p className="font-bold">{property.title}</p>
+              <p className="mt-1 text-sm">{money(property.price, property.currency)}</p>
+              <Link to={`/propiedades/${property.slug}`} className="mt-2 inline-block font-bold text-[#d71920]">Ver propiedad</Link>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+    </MapContainer>
+  );
+};
+
+const PropertyCard = ({ property, active, onActivate, view }) => {
+  const cover = property.photos?.find((item) => item.mediaType !== 'video') || property.photos?.[0];
+  const hasVideo = property.photos?.some((item) => item.mediaType === 'video');
+
+  return (
+    <article
+      onMouseEnter={() => onActivate(property.id)}
+      className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-lg ${active ? 'border-[#d71920] ring-2 ring-red-100' : 'border-slate-200'} ${view === 'list' ? 'sm:grid sm:grid-cols-[250px_1fr]' : ''}`}
+    >
+      <Link to={`/propiedades/${property.slug}`} className="relative block h-52 overflow-hidden bg-slate-100 sm:h-full sm:min-h-[220px]">
+        {cover?.url ? (
+          cover.mediaType === 'video' ? <video src={cover.url} muted className="h-full w-full object-cover" /> : <img src={cover.url} alt={property.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+        ) : <div className="grid h-full place-items-center text-slate-300"><Building2 size={44} /></div>}
+        <span className="absolute left-3 top-3 rounded-full bg-[#d71920] px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white">{property.operation}</span>
+        {property.featured && <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-950"><Star size={12} fill="currentColor" /> Destacada</span>}
+        {hasVideo && <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/75 px-3 py-1.5 text-xs font-bold text-white"><Video size={13} /> Video</span>}
+      </Link>
+
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1 text-xs font-bold text-[#d71920]"><MapPin size={13} /> {property.city}, {property.state}</p>
+            <Link to={`/propiedades/${property.slug}`}><h2 className="mt-2 line-clamp-2 text-lg font-black leading-6 text-slate-950 group-hover:text-[#d71920]">{property.title}</h2></Link>
+          </div>
+          <p className="shrink-0 text-right text-lg font-black text-slate-950">{money(property.price, property.currency)}{property.operation === 'renta' && <span className="block text-xs font-semibold text-slate-500">por mes</span>}</p>
+        </div>
+        <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{property.description}</p>
+        <div className="mt-5 flex flex-wrap gap-4 border-t border-slate-100 pt-4 text-sm font-semibold text-slate-600">
+          {property.bedrooms ? <span className="inline-flex items-center gap-1.5"><BedDouble size={16} /> {property.bedrooms}</span> : null}
+          {property.bathrooms ? <span className="inline-flex items-center gap-1.5"><Bath size={16} /> {property.bathrooms}</span> : null}
+          {property.area ? <span className="inline-flex items-center gap-1.5"><Square size={15} /> {property.area} m²</span> : null}
+          <span className="ml-auto capitalize text-slate-400">{property.type}</span>
+        </div>
+      </div>
+    </article>
+  );
+};
 
 const PropertiesPage = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
-  const [filters, setFilters] = useState({
-    operation: '', type: '', city: '', search: '', sort: 'newest', page: 1, limit: 12,
-  });
   const [cities, setCities] = useState([]);
-  const [showFilters, setShowFilters] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [mobilePanel, setMobilePanel] = useState('list');
+  const [view, setView] = useState('grid');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [filters, setFilters] = useState({ operation: '', type: '', city: '', minPrice: '', maxPrice: '', bedrooms: '', sort: 'newest', search: '', page: 1, limit: 12 });
 
-  useEffect(() => {
-    api.getCities().then(setCities).catch(() => {});
-  }, []);
+  useEffect(() => { api.getCities().then(setCities).catch(() => setCities([])); }, []);
 
   useEffect(() => {
     setLoading(true);
-    const params = {};
-    Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== null));
     api.getProperties(params)
-      .then(data => {
-        setProperties(data.properties);
-        setPagination(data.pagination);
+      .then((data) => {
+        setProperties(data.properties || []);
+        setPagination(data.pagination || { page: 1, pages: 1, total: 0 });
+        setActiveId(data.properties?.[0]?.id || null);
       })
-      .catch(console.error)
+      .catch(() => setProperties([]))
       .finally(() => setLoading(false));
   }, [filters]);
 
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
-  };
-
-  const operations = [
-    { value: '', label: 'Todas' },
-    { value: 'venta', label: 'Venta' },
-    { value: 'renta', label: 'Renta' },
-  ];
-
-  const types = [
-    { value: '', label: 'Todos' },
-    { value: 'casa', label: 'Casa' },
-    { value: 'departamento', label: 'Departamento' },
-    { value: 'terreno', label: 'Terreno' },
-    { value: 'oficina', label: 'Oficina' },
-    { value: 'local', label: 'Local' },
-  ];
-
-  const sortOptions = [
-    { value: 'newest', label: 'Más recientes' },
-    { value: 'price_asc', label: 'Precio: menor a mayor' },
-    { value: 'price_desc', label: 'Precio: mayor a menor' },
-    { value: 'area_desc', label: 'Mayor área' },
-  ];
+  const mappedCount = useMemo(() => properties.filter((item) => item.lat && item.lng).length, [properties]);
+  const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value, page: 1 }));
+  const submitSearch = (event) => { event.preventDefault(); updateFilter('search', searchDraft); };
+  const clearFilters = () => { setSearchDraft(''); setFilters({ operation: '', type: '', city: '', minPrice: '', maxPrice: '', bedrooms: '', sort: 'newest', search: '', page: 1, limit: 12 }); };
 
   return (
-    <main className="pt-20 min-h-screen bg-[#0a0a0a]">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header & Search */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Propiedades</h1>
-          <p className="text-gray-400">{pagination.total} propiedades disponibles</p>
+    <main className="min-h-screen bg-slate-50 pt-[78px] text-slate-950">
+      <section className="sticky top-[78px] z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto max-w-[1700px] px-4 py-4 sm:px-6 lg:px-8">
+          <form onSubmit={submitSearch} className="flex gap-2">
+            <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} /><input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} className="w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 outline-none focus:border-[#d71920] focus:ring-4 focus:ring-red-100" placeholder="Ciudad, colonia, dirección o palabra clave" /></div>
+            <button className="rounded-xl bg-[#d71920] px-5 font-bold text-white hover:bg-[#b91319]">Buscar</button>
+          </form>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <select value={filters.operation} onChange={(event) => updateFilter('operation', event.target.value)} className="filter-select"><option value="">Comprar o rentar</option><option value="venta">Venta</option><option value="renta">Renta</option></select>
+            <select value={filters.type} onChange={(event) => updateFilter('type', event.target.value)} className="filter-select"><option value="">Tipo de propiedad</option><option value="casa">Casa</option><option value="departamento">Departamento</option><option value="terreno">Terreno</option><option value="oficina">Oficina</option><option value="local">Local</option><option value="bodega">Bodega</option></select>
+            <select value={filters.city} onChange={(event) => updateFilter('city', event.target.value)} className="filter-select"><option value="">Todas las ciudades</option>{cities.map((city) => <option key={city}>{city}</option>)}</select>
+            <input value={filters.minPrice} onChange={(event) => updateFilter('minPrice', event.target.value)} type="number" min="0" className="filter-select w-36" placeholder="Precio mínimo" />
+            <input value={filters.maxPrice} onChange={(event) => updateFilter('maxPrice', event.target.value)} type="number" min="0" className="filter-select w-36" placeholder="Precio máximo" />
+            <select value={filters.bedrooms} onChange={(event) => updateFilter('bedrooms', event.target.value)} className="filter-select"><option value="">Recámaras</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select>
+            <select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value)} className="filter-select"><option value="newest">Más recientes</option><option value="price_asc">Menor precio</option><option value="price_desc">Mayor precio</option><option value="area_desc">Mayor área</option></select>
+            <button type="button" onClick={clearFilters} className="shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 hover:border-red-300 hover:text-[#d71920]">Limpiar</button>
+          </div>
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-[1700px]">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
+          <div><h1 className="text-xl font-black">Propiedades disponibles</h1><p className="text-sm text-slate-500">{pagination.total} resultados · {mappedCount} con ubicación en mapa</p></div>
+          <div className="flex items-center gap-2">
+            <div className="hidden rounded-lg border border-slate-200 bg-slate-50 p-1 sm:flex"><button onClick={() => setView('grid')} className={`rounded-md p-2 ${view === 'grid' ? 'bg-white text-[#d71920] shadow-sm' : 'text-slate-400'}`} aria-label="Vista de cuadrícula"><Grid2X2 size={17} /></button><button onClick={() => setView('list')} className={`rounded-md p-2 ${view === 'list' ? 'bg-white text-[#d71920] shadow-sm' : 'text-slate-400'}`} aria-label="Vista de lista"><List size={17} /></button></div>
+            <div className="flex rounded-lg border border-slate-200 p-1 lg:hidden"><button onClick={() => setMobilePanel('list')} className={`inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-bold ${mobilePanel === 'list' ? 'bg-slate-950 text-white' : 'text-slate-500'}`}><List size={16} /> Lista</button><button onClick={() => setMobilePanel('map')} className={`inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-bold ${mobilePanel === 'map' ? 'bg-slate-950 text-white' : 'text-slate-500'}`}><MapIcon size={16} /> Mapa</button></div>
+          </div>
         </div>
 
-        {/* Search bar */}
-        <div className="flex gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar propiedades..."
-              value={filters.search}
-              onChange={e => handleFilterChange('search', e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-amber-400/50 focus:outline-none"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
-              showFilters ? 'bg-amber-400/10 border-amber-400/30 text-amber-400' : 'bg-white/5 border-white/10 text-gray-300'
-            }`}
-          >
-            <SlidersHorizontal size={18} /> Filtros
-          </button>
-        </div>
-
-        {/* Filters */}
-        {showFilters && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            className="mb-6 p-4 bg-white/5 rounded-xl border border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4"
-          >
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Operación</label>
-              <select
-                value={filters.operation}
-                onChange={e => handleFilterChange('operation', e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:border-amber-400/50 focus:outline-none"
-              >
-                {operations.map(o => <option key={o.value} value={o.value} className="bg-[#111]">{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Tipo</label>
-              <select
-                value={filters.type}
-                onChange={e => handleFilterChange('type', e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:border-amber-400/50 focus:outline-none"
-              >
-                {types.map(t => <option key={t.value} value={t.value} className="bg-[#111]">{t.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Ciudad</label>
-              <select
-                value={filters.city}
-                onChange={e => handleFilterChange('city', e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:border-amber-400/50 focus:outline-none"
-              >
-                <option value="" className="bg-[#111]">Todas</option>
-                {cities.map(c => <option key={c} value={c} className="bg-[#111]">{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Ordenar</label>
-              <select
-                value={filters.sort}
-                onChange={e => handleFilterChange('sort', e.target.value)}
-                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:border-amber-400/50 focus:outline-none"
-              >
-                {sortOptions.map(s => <option key={s.value} value={s.value} className="bg-[#111]">{s.label}</option>)}
-              </select>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Properties Grid */}
-        {loading ? (
-          <div className="text-center py-16 text-gray-500">Cargando propiedades...</div>
-        ) : properties.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-gray-400 mb-4">No se encontraron propiedades</p>
-            <button
-              onClick={() => setFilters({ operation: '', type: '', city: '', search: '', sort: 'newest', page: 1, limit: 12 })}
-              className="px-4 py-2 bg-amber-400/10 text-amber-400 rounded-lg hover:bg-amber-400/20"
-            >
-              Limpiar filtros
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.map((prop, i) => (
-                <motion.div key={prop.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}>
-                  <Link to={`/propiedades/${prop.slug}`} className="block group">
-                    <div className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden hover:border-amber-400/30 transition-all">
-                      <div className="relative h-48 overflow-hidden">
-                        <img
-                          src={prop.photos?.[0]?.url || '/images/placeholder.jpg'}
-                          alt={prop.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                        {prop.featured && (
-                          <span className="absolute top-3 left-3 px-2 py-1 bg-amber-400 text-black text-xs font-bold rounded flex items-center gap-1">
-                            <Star size={12} /> Destacada
-                          </span>
-                        )}
-                        <span className="absolute top-3 right-3 px-2 py-1 bg-black/70 text-white text-xs rounded">
-                          {prop.operation === 'venta' ? 'Venta' : 'Renta'}
-                        </span>
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-semibold text-white mb-1 group-hover:text-amber-400 transition-colors">{prop.title}</h3>
-                        <p className="text-sm text-gray-400 mb-3">{prop.city}, {prop.state}</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-bold text-amber-400">
-                            {prop.operation === 'renta' ? `$${prop.price.toLocaleString()}/mes` : `$${prop.price.toLocaleString()}`}
-                          </span>
-                          <span className="text-xs text-gray-500 capitalize">{prop.type}</span>
-                        </div>
-                        {(prop.bedrooms || prop.bathrooms || prop.area) && (
-                          <div className="flex gap-3 mt-3 text-xs text-gray-400">
-                            {prop.bedrooms && <span>{prop.bedrooms} rec</span>}
-                            {prop.bathrooms && <span>{prop.bathrooms} baños</span>}
-                            {prop.area && <span>{prop.area} m²</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Pagination */}
-            {pagination.pages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-8">
-                <button
-                  onClick={() => setFilters(f => ({ ...f, page: Math.max(1, f.page - 1) }))}
-                  disabled={filters.page === 1}
-                  className="p-2 bg-white/5 border border-white/10 rounded-lg text-gray-400 disabled:opacity-30"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                {Array.from({ length: pagination.pages }, (_, i) => i + 1).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setFilters(f => ({ ...f, page: p }))}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium ${
-                      p === filters.page ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setFilters(f => ({ ...f, page: Math.min(pagination.pages, f.page + 1) }))}
-                  disabled={filters.page === pagination.pages}
-                  className="p-2 bg-white/5 border border-white/10 rounded-lg text-gray-400 disabled:opacity-30"
-                >
-                  <ChevronRight size={18} />
-                </button>
+        <div className="lg:grid lg:h-[calc(100vh-278px)] lg:grid-cols-[minmax(520px,48%)_1fr]">
+          <section className={`${mobilePanel === 'map' ? 'hidden' : 'block'} overflow-y-auto border-r border-slate-200 p-4 sm:p-6 lg:block`}>
+            {loading ? (
+              <div className="grid gap-5 sm:grid-cols-2">{Array.from({ length: 6 }, (_, i) => <div key={i} className="h-96 animate-pulse rounded-2xl bg-slate-200" />)}</div>
+            ) : properties.length === 0 ? (
+              <div className="grid min-h-[420px] place-items-center rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center"><div><SlidersHorizontal className="mx-auto text-slate-300" size={44} /><h2 className="mt-4 text-xl font-black">No encontramos propiedades</h2><p className="mt-2 text-slate-500">Prueba con otros filtros o elimina algunos criterios.</p><button onClick={clearFilters} className="mt-5 rounded-xl bg-[#d71920] px-5 py-3 font-bold text-white">Limpiar filtros</button></div></div>
+            ) : (
+              <div className={view === 'grid' ? 'grid gap-5 sm:grid-cols-2' : 'space-y-5'}>
+                {properties.map((property) => <PropertyCard key={property.id} property={property} active={property.id === activeId} onActivate={setActiveId} view={view} />)}
               </div>
             )}
-          </>
-        )}
+
+            {pagination.pages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-2 pb-6">
+                <button disabled={filters.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))} className="rounded-lg border border-slate-300 bg-white p-2 disabled:opacity-30"><ChevronLeft /></button>
+                <span className="px-4 text-sm font-bold">Página {pagination.page} de {pagination.pages}</span>
+                <button disabled={filters.page >= pagination.pages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))} className="rounded-lg border border-slate-300 bg-white p-2 disabled:opacity-30"><ChevronRight /></button>
+              </div>
+            )}
+          </section>
+
+          <aside className={`${mobilePanel === 'list' ? 'hidden' : 'block'} h-[calc(100vh-278px)] min-h-[520px] bg-slate-200 lg:block lg:h-full`}>
+            <PropertiesMap properties={properties} activeId={activeId} onActivate={setActiveId} />
+          </aside>
+        </div>
       </div>
     </main>
   );

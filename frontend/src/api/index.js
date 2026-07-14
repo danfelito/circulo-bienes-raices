@@ -5,8 +5,16 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const parseError = async (res, fallback) => {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const api = {
-  // Auth
   login: async (email, password) => {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
@@ -14,16 +22,14 @@ const api = {
       credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error de login');
-    }
+    if (!res.ok) throw new Error(await parseError(res, 'Error de login'));
     return res.json();
   },
 
   logout: async () => {
     await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
   },
 
   getMe: async () => {
@@ -35,7 +41,36 @@ const api = {
     return res.json();
   },
 
-  // Properties - Public
+  registerAdvisor: async (data) => {
+    const res = await fetch(`${API_BASE}/advisors/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'No fue posible enviar la solicitud'));
+    return res.json();
+  },
+
+  getAdvisors: async () => {
+    const res = await fetch(`${API_BASE}/advisors`, {
+      credentials: 'include',
+      headers: { ...getAuthHeaders() },
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'No fue posible cargar los asesores'));
+    return res.json();
+  },
+
+  updateAdvisorStatus: async (id, status) => {
+    const res = await fetch(`${API_BASE}/advisors/${id}/status`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'No fue posible actualizar el asesor'));
+    return res.json();
+  },
+
   getProperties: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/properties?${query}`);
@@ -61,7 +96,15 @@ const api = {
     return res.json();
   },
 
-  // Properties - Admin
+  getMyProperties: async () => {
+    const res = await fetch(`${API_BASE}/properties/mine`, {
+      credentials: 'include',
+      headers: { ...getAuthHeaders() },
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'No fue posible cargar tus propiedades'));
+    return res.json();
+  },
+
   createProperty: async (data) => {
     const res = await fetch(`${API_BASE}/properties`, {
       method: 'POST',
@@ -69,10 +112,7 @@ const api = {
       credentials: 'include',
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al crear');
-    }
+    if (!res.ok) throw new Error(await parseError(res, 'Error al crear'));
     return res.json();
   },
 
@@ -83,10 +123,7 @@ const api = {
       credentials: 'include',
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar');
-    }
+    if (!res.ok) throw new Error(await parseError(res, 'Error al actualizar'));
     return res.json();
   },
 
@@ -96,7 +133,7 @@ const api = {
       headers: { ...getAuthHeaders() },
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('Error al eliminar');
+    if (!res.ok) throw new Error(await parseError(res, 'Error al eliminar'));
     return res.json();
   },
 
@@ -107,20 +144,33 @@ const api = {
       credentials: 'include',
       body: JSON.stringify({ status }),
     });
-    if (!res.ok) throw new Error('Error al cambiar estado');
+    if (!res.ok) throw new Error(await parseError(res, 'Error al cambiar estado'));
+    return res.json();
+  },
+
+  uploadMedia: async (propertyId, files) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('media', file));
+    const res = await fetch(`${API_BASE}/properties/${propertyId}/media`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await parseError(res, 'Error al subir fotos o videos'));
     return res.json();
   },
 
   uploadPhotos: async (propertyId, files) => {
     const formData = new FormData();
-    files.forEach(file => formData.append('photos', file));
+    files.forEach((file) => formData.append('photos', file));
     const res = await fetch(`${API_BASE}/properties/${propertyId}/photos`, {
       method: 'POST',
       headers: { ...getAuthHeaders() },
       credentials: 'include',
       body: formData,
     });
-    if (!res.ok) throw new Error('Error al subir fotos');
+    if (!res.ok) throw new Error(await parseError(res, 'Error al subir fotos'));
     return res.json();
   },
 
@@ -130,7 +180,7 @@ const api = {
       headers: { ...getAuthHeaders() },
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('Error al eliminar foto');
+    if (!res.ok) throw new Error(await parseError(res, 'Error al eliminar archivo'));
     return res.json();
   },
 
@@ -140,11 +190,10 @@ const api = {
       headers: { ...getAuthHeaders() },
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('Error al establecer foto principal');
+    if (!res.ok) throw new Error(await parseError(res, 'Error al establecer foto principal'));
     return res.json();
   },
 
-  // Inquiries
   submitInquiry: async (data) => {
     const res = await fetch(`${API_BASE}/inquiries`, {
       method: 'POST',
@@ -185,7 +234,6 @@ const api = {
     return res.json();
   },
 
-  // Stats
   getStats: async () => {
     const res = await fetch(`${API_BASE}/stats`, {
       headers: { ...getAuthHeaders() },
