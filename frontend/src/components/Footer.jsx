@@ -1,46 +1,45 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { MapPin, Phone, Mail } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Mail, MapPin, Phone } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 const Footer = () => {
+  const location = useLocation();
+  if (location.pathname.startsWith('/admin')) return null;
+
   return (
-    <footer className="bg-[#050505] border-t border-white/5">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div>
-            <h3 className="text-lg font-bold text-amber-400 mb-4">Círculo Internacional</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
-              Tu agencia de bienes raíces de confianza en Veracruz, México. Conectamos personas con su hogar ideal.
-            </p>
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-white mb-4">Navegación</h4>
-            <div className="space-y-2">
-              <Link to="/" className="block text-sm text-gray-400 hover:text-amber-400 transition-colors">Inicio</Link>
-              <Link to="/propiedades" className="block text-sm text-gray-400 hover:text-amber-400 transition-colors">Propiedades</Link>
-              <Link to="/admin/login" className="block text-sm text-gray-400 hover:text-amber-400 transition-colors">Admin</Link>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-white mb-4">Contacto</h4>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <MapPin size={14} /> Veracruz, México
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Phone size={14} /> +52 229 XXX XXXX
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Mail size={14} /> info@circulobienesraices.com
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="mt-8 pt-8 border-t border-white/5 text-center">
-          <p className="text-xs text-gray-500">
-            © {new Date().getFullYear()} Círculo Internacional de Bienes Raíces. Todos los derechos reservados.
+    <footer id="contacto" className="border-t border-slate-200 bg-white">
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-3 lg:px-8">
+        <div>
+          <BrandLogo />
+          <p className="mt-5 max-w-sm text-sm leading-7 text-slate-600">
+            Acompañamiento profesional para comprar, vender, rentar y promover propiedades en Veracruz y mercados internacionales.
           </p>
         </div>
+
+        <div>
+          <h3 className="font-bold text-slate-950">Navegación</h3>
+          <div className="mt-4 grid gap-2 text-sm text-slate-600">
+            <Link to="/propiedades" className="hover:text-[#d71920]">Propiedades</Link>
+            <Link to="/asesores" className="hover:text-[#d71920]">Acceso para asesores</Link>
+            <a href="/#servicios" className="hover:text-[#d71920]">Servicios</a>
+            <Link to="/admin/login" className="hover:text-[#d71920]">Administración</Link>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="font-bold text-slate-950">Contacto</h3>
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            <p className="flex items-center gap-2"><MapPin size={16} className="text-[#d71920]" /> Veracruz, México</p>
+            <p className="flex items-center gap-2"><Phone size={16} className="text-[#d71920]" /> +52 229 XXX XXXX</p>
+            <a className="flex items-center gap-2 hover:text-[#d71920]" href="mailto:circulointernacionalveracruz1@gmail.com">
+              <Mail size={16} className="text-[#d71920]" /> circulointernacionalveracruz1@gmail.com
+            </a>
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-slate-100 px-4 py-5 text-center text-xs text-slate-500">
+        © {new Date().getFullYear()} Círculo Internacional de Bienes Raíces. Todos los derechos reservados.
       </div>
     </footer>
   );
