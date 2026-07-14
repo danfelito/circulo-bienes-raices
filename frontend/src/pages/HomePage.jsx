@@ -1,201 +1,130 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Building2, TrendingUp, Users, Globe, ArrowRight, Star } from 'lucide-react';
+import { ArrowRight, Building2, CheckCircle2, Globe2, Handshake, KeyRound, MapPin, ShieldCheck, Star, Users } from 'lucide-react';
 import api from '../api';
+import TestimonialsCarousel from '../components/TestimonialsCarousel';
 
-const Hero = () => {
-  return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0a] via-[#111] to-[#0a0a0a]" />
-      <div className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 25% 50%, rgba(217, 119, 6, 0.15) 0%, transparent 50%), radial-gradient(circle at 75% 50%, rgba(217, 119, 6, 0.1) 0%, transparent 50%)',
-        }}
-      />
+const money = (value, currency = 'MXN') => new Intl.NumberFormat('es-MX', {
+  style: 'currency', currency, maximumFractionDigits: 0,
+}).format(value || 0);
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-          <span className="inline-block px-4 py-1.5 bg-amber-400/10 border border-amber-400/20 rounded-full text-amber-400 text-xs font-medium mb-6">
-            🏠 Bienes Raíces en Veracruz
-          </span>
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
-            Encuentra tu <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">hogar ideal</span>
-          </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-8">
-            En Círculo Internacional de Bienes Raíces te ayudamos a encontrar la propiedad perfecta en Veracruz. Casas, departamentos, terrenos y más.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/propiedades"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-semibold rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all shadow-lg shadow-amber-500/25"
-            >
-              Ver Propiedades <ArrowRight size={18} />
-            </Link>
-            <a
-              href="https://wa.me/522291234567"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-white/5 border border-white/10 text-white font-medium rounded-lg hover:bg-white/10 transition-all"
-            >
-              📞 Contactar por WhatsApp
-            </a>
-          </div>
-        </motion.div>
-      </div>
-    </section>
-  );
-};
-
-const Stats = () => {
-  const [stats, setStats] = useState({ properties: 0, cities: 0, years: 15 });
-  const items = [
-    { icon: Building2, label: 'Propiedades', value: stats.properties || '50+' },
-    { icon: TrendingUp, label: 'Ventas Exitosas', value: '200+' },
-    { icon: Users, label: 'Clientes Satisfechos', value: '500+' },
-    { icon: Globe, label: 'Ciudades', value: stats.cities || '10+' },
-  ];
-
-  return (
-    <section className="py-16 bg-[#0a0a0a]">
-      <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6">
-        {items.map(({ icon: Icon, label, value }, i) => (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="text-center p-6 bg-white/5 rounded-2xl border border-white/5"
+const Hero = () => (
+  <section className="relative min-h-[760px] overflow-hidden bg-slate-950 pt-[78px] text-white">
+    <img
+      src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2200&q=85"
+      alt="Residencia contemporánea"
+      className="absolute inset-0 h-full w-full object-cover opacity-55"
+    />
+    <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/25" />
+    <div className="relative mx-auto flex min-h-[682px] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
+      <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="max-w-3xl">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] backdrop-blur">
+          <MapPin size={15} className="text-red-400" /> Veracruz · México · Internacional
+        </span>
+        <h1 className="mt-7 text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+          Propiedades que conectan con tu siguiente etapa.
+        </h1>
+        <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-200">
+          Compra, vende o renta con acompañamiento profesional, información clara y una plataforma diseñada para mostrar cada propiedad con alto nivel visual.
+        </p>
+        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <Link to="/propiedades" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d71920] px-7 py-3.5 font-bold text-white shadow-xl shadow-red-950/30 transition hover:bg-[#b91319]">
+            Explorar propiedades <ArrowRight size={18} />
+          </Link>
+          <a
+            href="https://circulo-inmobiliario.onrender.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/10 px-7 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white hover:text-slate-950"
           >
-            <Icon className="mx-auto mb-3 text-amber-400" size={28} />
-            <p className="text-2xl font-bold text-white">{value}</p>
-            <p className="text-sm text-gray-400">{label}</p>
-          </motion.div>
-        ))}
-      </div>
-    </section>
-  );
-};
+            Comenzar ahora <ArrowRight size={18} />
+          </a>
+        </div>
+      </motion.div>
+    </div>
+  </section>
+);
 
 const FeaturedProperties = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getFeatured()
-      .then(data => setProperties(data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    api.getFeatured().then(setProperties).catch(() => setProperties([])).finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <section className="py-16 bg-[#0a0a0a]">
-        <div className="max-w-7xl mx-auto px-4 text-center text-gray-500">Cargando propiedades destacadas...</div>
-      </section>
-    );
-  }
-
-  if (properties.length === 0) {
-    return null;
-  }
-
   return (
-    <section className="py-16 bg-[#0a0a0a]">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-4">Propiedades Destacadas</h2>
-          <p className="text-gray-400">Las mejores oportunidades inmobiliarias en Veracruz</p>
+    <section className="bg-white py-20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-[0.24em] text-[#d71920]">Selección destacada</span>
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Oportunidades para conocer hoy</h2>
+            <p className="mt-3 text-slate-600">Publicaciones autorizadas desde el panel de asesores.</p>
+          </div>
+          <Link to="/propiedades" className="inline-flex items-center gap-2 font-bold text-[#d71920]">Ver catálogo completo <ArrowRight size={18} /></Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((prop, i) => (
-            <motion.div
-              key={prop.id}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Link to={`/propiedades/${prop.slug}`} className="block group">
-                <div className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden hover:border-amber-400/30 transition-all">
-                  <div className="relative h-48 overflow-hidden">
-                    <img
-                      src={prop.photos?.[0]?.url || '/images/placeholder.jpg'}
-                      alt={prop.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    {prop.featured && (
-                      <span className="absolute top-3 left-3 px-2 py-1 bg-amber-400 text-black text-xs font-bold rounded flex items-center gap-1">
-                        <Star size={12} /> Destacada
-                      </span>
-                    )}
-                    <span className="absolute top-3 right-3 px-2 py-1 bg-black/70 text-white text-xs rounded">
-                      {prop.operation === 'venta' ? 'Venta' : 'Renta'}
-                    </span>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-white mb-1 group-hover:text-amber-400 transition-colors">{prop.title}</h3>
-                    <p className="text-sm text-gray-400 mb-3">{prop.city}, {prop.state}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-amber-400">
-                        {prop.operation === 'renta' ? `$${prop.price.toLocaleString()}/mes` : `$${prop.price.toLocaleString()}`}
-                      </span>
-                      <span className="text-xs text-gray-500">{prop.type}</span>
+
+        {loading ? (
+          <div className="mt-10 grid gap-5 md:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="h-96 animate-pulse rounded-3xl bg-slate-100" />)}</div>
+        ) : properties.length ? (
+          <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {properties.slice(0, 6).map((property, index) => {
+              const cover = property.photos?.find((item) => item.mediaType !== 'video') || property.photos?.[0];
+              return (
+                <motion.article key={property.id} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.06 }} viewport={{ once: true }} className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+                  <Link to={`/propiedades/${property.slug}`}>
+                    <div className="relative h-60 overflow-hidden bg-slate-100">
+                      {cover?.url ? <img src={cover.url} alt={property.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-slate-400"><Building2 size={42} /></div>}
+                      <span className="absolute left-4 top-4 rounded-full bg-[#d71920] px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white">{property.operation}</span>
+                      {property.featured && <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-950"><Star size={13} fill="currentColor" /> Destacada</span>}
                     </div>
-                    {(prop.bedrooms || prop.bathrooms || prop.area) && (
-                      <div className="flex gap-3 mt-3 text-xs text-gray-400">
-                        {prop.bedrooms && <span>{prop.bedrooms} rec</span>}
-                        {prop.bathrooms && <span>{prop.bathrooms} baños</span>}
-                        {prop.area && <span>{prop.area} m²</span>}
+                    <div className="p-6">
+                      <p className="text-sm font-semibold text-[#d71920]">{property.city}, {property.state}</p>
+                      <h3 className="mt-2 text-xl font-black text-slate-950 transition group-hover:text-[#d71920]">{property.title}</h3>
+                      <p className="mt-4 text-2xl font-black text-slate-950">{money(property.price, property.currency)}</p>
+                      <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-600">
+                        {property.bedrooms ? <span>{property.bedrooms} rec.</span> : null}
+                        {property.bathrooms ? <span>{property.bathrooms} baños</span> : null}
+                        {property.area ? <span>{property.area} m²</span> : null}
                       </div>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-        <div className="text-center mt-8">
-          <Link
-            to="/propiedades"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-amber-400/10 border border-amber-400/20 text-amber-400 rounded-lg hover:bg-amber-400/20 transition-all"
-          >
-            Ver todas las propiedades <ArrowRight size={16} />
-          </Link>
-        </div>
+                    </div>
+                  </Link>
+                </motion.article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-10 rounded-3xl border border-dashed border-slate-300 p-10 text-center text-slate-600">Las propiedades destacadas aparecerán aquí cuando sean publicadas.</div>
+        )}
       </div>
     </section>
   );
 };
 
 const Services = () => {
-  const services = [
-    { title: 'Venta de Propiedades', desc: 'Amplio catálogo de casas, departamentos y terrenos en las mejores ubicaciones de Veracruz.', icon: '🏠' },
-    { title: 'Renta de Inmuebles', desc: 'Opciones de renta para oficinas, locales comerciales y residencias con contratos flexibles.', icon: '🔑' },
-    { title: 'Asesoría Inmobiliaria', desc: 'Asesoría profesional para tomar la mejor decisión en tu inversión inmobiliaria.', icon: '📊' },
-    { title: 'Gestión de Propiedades', desc: 'Administración y mantenimiento de tu propiedad mientras generas ingresos.', icon: '📋' },
+  const items = [
+    { icon: KeyRound, title: 'Compra y renta', text: 'Búsqueda guiada y comparación de opciones con información útil para decidir.' },
+    { icon: Building2, title: 'Promoción de propiedades', text: 'Fichas completas con fotografías, video, datos técnicos y contacto directo.' },
+    { icon: ShieldCheck, title: 'Acompañamiento documental', text: 'Seguimiento ordenado del proceso y coordinación con las partes involucradas.' },
+    { icon: Globe2, title: 'Operaciones internacionales', text: 'Conexión con compradores, propietarios y asesores en diferentes mercados.' },
   ];
 
   return (
-    <section className="py-16 bg-[#080808]">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-4">Nuestros Servicios</h2>
-          <p className="text-gray-400">Soluciones inmobiliarias integrales</p>
+    <section id="servicios" className="bg-slate-50 py-20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl">
+          <span className="text-xs font-bold uppercase tracking-[0.24em] text-[#d71920]">Servicios</span>
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Una experiencia inmobiliaria conectada de principio a fin</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {services.map(({ title, desc, icon }, i) => (
-            <motion.div
-              key={title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="p-6 bg-white/5 rounded-2xl border border-white/5 hover:border-amber-400/20 transition-all"
-            >
-              <span className="text-3xl mb-4 block">{icon}</span>
-              <h3 className="font-semibold text-white mb-2">{title}</h3>
-              <p className="text-sm text-gray-400 leading-relaxed">{desc}</p>
-            </motion.div>
+        <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {items.map(({ icon: Icon, title, text }) => (
+            <article key={title} className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-[#d71920]"><Icon /></div>
+              <h3 className="mt-5 text-lg font-black text-slate-950">{title}</h3>
+              <p className="mt-3 text-sm leading-7 text-slate-600">{text}</p>
+            </article>
           ))}
         </div>
       </div>
@@ -203,41 +132,58 @@ const Services = () => {
   );
 };
 
-const CTA = () => (
-  <section className="py-16 bg-gradient-to-r from-amber-500/5 to-amber-600/5">
-    <div className="max-w-4xl mx-auto px-4 text-center">
-      <h2 className="text-3xl font-bold text-white mb-4">¿Listo para encontrar tu hogar?</h2>
-      <p className="text-gray-400 mb-8">Contáctanos y te ayudaremos a encontrar la propiedad perfecta.</p>
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <Link
-          to="/propiedades"
-          className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-semibold rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all"
-        >
-          Explorar Propiedades
-        </Link>
-        <a
-          href="https://wa.me/522291234567"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all"
-        >
-          📱 WhatsApp
-        </a>
+const About = () => (
+  <section id="nosotros" className="bg-white py-20">
+    <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+      <div className="relative overflow-hidden rounded-[2rem]">
+        <img src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1400&q=85" alt="Asesoría inmobiliaria" className="h-[520px] w-full object-cover" />
+        <div className="absolute bottom-5 left-5 right-5 rounded-2xl bg-white/95 p-5 shadow-xl backdrop-blur">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div><p className="text-2xl font-black text-[#d71920]">360°</p><p className="text-xs text-slate-600">Acompañamiento</p></div>
+            <div><p className="text-2xl font-black text-[#d71920]">24/7</p><p className="text-xs text-slate-600">Catálogo digital</p></div>
+            <div><p className="text-2xl font-black text-[#d71920]">1</p><p className="text-xs text-slate-600">Flujo conectado</p></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span className="text-xs font-bold uppercase tracking-[0.24em] text-[#d71920]">Nosotros</span>
+        <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Tecnología y asesoría humana en una misma plataforma</h2>
+        <p className="mt-6 text-lg leading-8 text-slate-600">Círculo Internacional de Bienes Raíces conecta el trabajo de los asesores con un catálogo público moderno. Cada propiedad se registra una sola vez y queda disponible para compradores e interesados.</p>
+        <div className="mt-7 space-y-4">
+          {['Asesores autorizados antes de publicar', 'Fotos, videos y detalles en una sola ficha', 'Búsqueda visual con mapa y filtros', 'Contacto directo y seguimiento comercial'].map((text) => (
+            <p key={text} className="flex items-center gap-3 font-semibold text-slate-800"><CheckCircle2 className="text-[#d71920]" size={20} /> {text}</p>
+          ))}
+        </div>
+        <Link to="/asesores" className="mt-8 inline-flex items-center gap-2 rounded-full bg-slate-950 px-7 py-3.5 font-bold text-white hover:bg-[#d71920]">Conocer el portal de asesores <ArrowRight size={18} /></Link>
       </div>
     </div>
   </section>
 );
 
-const HomePage = () => {
-  return (
-    <main>
-      <Hero />
-      <Stats />
-      <FeaturedProperties />
-      <Services />
-      <CTA />
-    </main>
-  );
-};
+const Stats = () => (
+  <section className="border-y border-slate-200 bg-white py-10">
+    <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 text-center sm:px-6 md:grid-cols-4 lg:px-8">
+      {[
+        { icon: Users, value: 'Atención', label: 'personalizada' },
+        { icon: Handshake, value: 'Proceso', label: 'transparente' },
+        { icon: Globe2, value: 'Alcance', label: 'internacional' },
+        { icon: ShieldCheck, value: 'Acceso', label: 'autorizado' },
+      ].map(({ icon: Icon, value, label }) => (
+        <div key={value} className="flex flex-col items-center"><Icon className="text-[#d71920]" /><p className="mt-2 text-xl font-black text-slate-950">{value}</p><p className="text-sm text-slate-500">{label}</p></div>
+      ))}
+    </div>
+  </section>
+);
+
+const HomePage = () => (
+  <main>
+    <Hero />
+    <Stats />
+    <FeaturedProperties />
+    <Services />
+    <About />
+    <TestimonialsCarousel />
+  </main>
+);
 
 export default HomePage;
