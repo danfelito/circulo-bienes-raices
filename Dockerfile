@@ -3,13 +3,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Prisma necesita OpenSSL para detectar el motor correcto en Alpine.
+RUN apk add --no-cache openssl libc6-compat
+
 # Backend
 COPY backend/package*.json ./backend/
+COPY backend/prisma ./backend/prisma/
 WORKDIR /app/backend
-RUN npm ci --only=production
+RUN npm ci --include=dev
 
-COPY backend/ ./ 
-RUN npx prisma generate
+COPY backend/ ./
 
 # Frontend
 WORKDIR /app
@@ -24,6 +27,9 @@ RUN npm run build
 FROM node:20-alpine
 
 WORKDIR /app
+
+# Prisma también necesita OpenSSL durante las migraciones y en runtime.
+RUN apk add --no-cache openssl libc6-compat
 
 # Copy backend
 COPY --from=builder /app/backend/node_modules ./node_modules
