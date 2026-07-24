@@ -9,7 +9,7 @@ const features = [
 ];
 export default function FeaturesGrid() {
   return (
-    <section className="py-32 px-6 lg:px-16 bg-black">
+    <section id="nosotros" className="py-32 px-6 lg:px-16 bg-black">
       <div className="text-center mb-16">
         <div className="liquid-glass rounded-full px-4 py-2 inline-block mb-6"><span className="text-xs font-medium text-white">¿Por Qué Elegirnos?</span></div>
         <h2 className="text-4xl md:text-6xl font-heading italic text-white">La diferencia está en los detalles</h2>

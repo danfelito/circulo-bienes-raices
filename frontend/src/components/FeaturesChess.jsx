@@ -6,7 +6,7 @@ const features = [
 ];
 export default function FeaturesChess() {
   return (
-    <section className="py-32 px-6 lg:px-16 bg-black">
+    <section id="servicios" className="py-32 px-6 lg:px-16 bg-black">
       <div className="text-center mb-20">
         <div className="liquid-glass rounded-full px-4 py-2 inline-block mb-6"><span className="text-xs font-medium text-white">Nuestros Servicios</span></div>
         <h2 className="text-4xl md:text-6xl font-heading italic text-white">Excelencia en cada detalle</h2>

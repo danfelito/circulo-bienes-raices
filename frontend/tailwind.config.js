@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        heading: ["'Instrument Serif'", "serif"],
-        body: ["'Barlow'", "sans-serif"],
+        heading: ["Georgia", "'Times New Roman'", "serif"],
+        body: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
     },
   },

@@ -1,63 +1,93 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Home, Building2, Shield } from 'lucide-react';
+import { ArrowUpRight, Menu, Moon, Sun, X } from 'lucide-react';
+import BrandLogo from './BrandLogo';
+import { useTheme } from '../theme/ThemeContext';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
+    const handleScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const navLinks = [
-    { to: '/', label: 'Inicio', icon: Home },
-    { to: '/propiedades', label: 'Propiedades', icon: Building2 },
-    { to: '/admin', label: 'Admin', icon: Shield },
+    { to: '/', label: 'Inicio', route: true },
+    { to: '/propiedades', label: 'Propiedades', route: true },
+    { to: '/#servicios', label: 'Servicios' },
+    { to: '/#nosotros', label: 'Nosotros' },
+    { to: '/#contacto', label: 'Contacto' },
+    {
+      to: 'https://circulo-inmobiliario.onrender.com/',
+      label: 'Buscador inteligente ↗',
+      external: true,
+    },
   ];
 
   return (
-    <motion.nav
-      initial={{ y: -100 }}
+    <motion.header
+      initial={{ y: -80 }}
       animate={{ y: 0 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? 'bg-[#111]/95 backdrop-blur-lg shadow-lg' : 'bg-transparent'
+      className={`site-nav fixed inset-x-0 top-0 z-50 border-b transition-all duration-300 ${
+        scrolled ? 'site-nav-scrolled shadow-lg backdrop-blur-xl' : 'backdrop-blur-md'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
-              Círculo Internacional
-            </span>
-            <span className="text-xs text-gray-400 hidden sm:block">Bienes Raíces</span>
-          </Link>
+      <div className="mx-auto flex h-[82px] max-w-[1500px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
+        <BrandLogo compact />
 
-          <div className="hidden md:flex items-center gap-6">
-            {navLinks.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                  location.pathname === to || (to === '/admin' && isAdmin)
-                    ? 'text-amber-400'
-                    : 'text-gray-300 hover:text-amber-400'
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-              </Link>
-            ))}
-          </div>
+        <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegación principal">
+          {navLinks.map((item) => item.route ? (
+            <Link key={item.to} to={item.to} className={`nav-link px-3 py-2 text-sm font-semibold transition-colors ${location.pathname === item.to ? 'nav-link-active' : ''}`}>
+              {item.label}
+            </Link>
+          ) : (
+            <a
+              key={item.to}
+              href={item.to}
+              className="nav-link px-3 py-2 text-sm font-semibold transition-colors"
+              target={item.external ? '_blank' : undefined}
+              rel={item.external ? 'noreferrer' : undefined}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
 
+        <div className="hidden items-center gap-2 lg:flex">
           <button
+            type="button"
+            onClick={toggleTheme}
+            className="theme-toggle"
+            aria-label={theme === 'dark' ? 'Activar modo día' : 'Activar modo oscuro'}
+            title={theme === 'dark' ? 'Modo día' : 'Modo oscuro'}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <a href="/#contacto" className="nav-cta">
+            Agendar visita <ArrowUpRight size={16} />
+          </a>
+        </div>
+
+        <div className="flex items-center gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="theme-toggle"
+            aria-label={theme === 'dark' ? 'Activar modo día' : 'Activar modo oscuro'}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <button
+            type="button"
             onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden text-gray-300 hover:text-amber-400"
+            className="theme-toggle"
+            aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
           >
             {isOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -70,29 +100,35 @@ const Navbar = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-[#111]/95 backdrop-blur-lg border-t border-white/10"
+            className="mobile-nav border-t lg:hidden"
           >
-            <div className="px-4 py-3 space-y-2">
-              {navLinks.map(({ to, label, icon: Icon }) => (
+            <div className="space-y-1 px-4 py-4">
+              {navLinks.map((item) => item.route ? (
                 <Link
-                  key={to}
-                  to={to}
+                  key={item.to}
+                  to={item.to}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                    location.pathname === to
-                      ? 'bg-amber-400/10 text-amber-400'
-                      : 'text-gray-300 hover:bg-white/5'
-                  }`}
+                  className="mobile-nav-link block rounded-lg px-4 py-3 text-sm font-semibold"
                 >
-                  <Icon size={16} />
-                  {label}
+                  {item.label}
                 </Link>
+              ) : (
+                <a
+                  key={item.to}
+                  href={item.to}
+                  onClick={() => setIsOpen(false)}
+                  className="mobile-nav-link block rounded-lg px-4 py-3 text-sm font-semibold"
+                  target={item.external ? '_blank' : undefined}
+                  rel={item.external ? 'noreferrer' : undefined}
+                >
+                  {item.label}
+                </a>
               ))}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.nav>
+    </motion.header>
   );
 };
 

@@ -1,7 +1,8 @@
 import { MapPin, Phone, Mail } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 export default function CtaFooter() {
   return (
-    <section className="relative py-32 px-6 lg:px-16 overflow-hidden bg-gradient-to-b from-black to-gray-900">
+    <section id="contacto" className="relative py-32 px-6 lg:px-16 overflow-hidden bg-gradient-to-b from-black to-gray-900">
       <div className="relative z-10 text-center max-w-4xl mx-auto mb-20">
         <h2 className="text-5xl md:text-7xl font-heading italic text-white mb-8">¿Listo para encontrar tu propiedad ideal?</h2>
         <p className="text-white/60 font-body font-light text-lg mb-12 max-w-2xl mx-auto">Agenda una consulta gratuita con nuestros expertos.</p>
@@ -14,7 +15,7 @@ export default function CtaFooter() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
             <div>
-              <div className="h-16 w-16 rounded-full bg-red-600 flex items-center justify-center mb-6"><span className="text-white font-bold text-2xl">CI</span></div>
+              <BrandLogo />
               <p className="text-white/60 font-body font-light text-sm mb-6">Excelencia en bienes raíces internacionales desde 2009.</p>
             </div>
             <div>

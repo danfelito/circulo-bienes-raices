@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Phone, Mail } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 const Footer = () => {
   return (
@@ -8,8 +9,8 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
-            <h3 className="text-lg font-bold text-amber-400 mb-4">Círculo Internacional</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
+            <BrandLogo />
+            <p className="mt-5 text-gray-400 text-sm leading-relaxed">
               Tu agencia de bienes raíces de confianza en Veracruz, México. Conectamos personas con su hogar ideal.
             </p>
           </div>
