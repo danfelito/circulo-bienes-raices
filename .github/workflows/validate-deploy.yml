@@ -52,3 +52,47 @@ jobs:
 
       - name: Build production Docker image
         run: docker build --tag circulo-bienes-raices:test .
+
+  live-smoke:
+    name: Check current Render services
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 12
+
+    steps:
+      - name: Test active website, API and connected portal
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fetch() {
+            local url="$1"
+            local destination="$2"
+            echo "Checking ${url}"
+            curl --fail --silent --show-error --location \
+              --retry 5 --retry-all-errors --retry-delay 12 \
+              --connect-timeout 20 --max-time 120 \
+              --output "${destination}" "${url}"
+          }
+
+          fetch "https://circulo-bienes-raices-1.onrender.com/" /tmp/home.html
+          grep -qi "Círculo Internacional" /tmp/home.html
+
+          fetch "https://circulo-bienes-raices-1.onrender.com/propiedades" /tmp/properties.html
+          grep -qi "Círculo Internacional" /tmp/properties.html
+
+          fetch "https://circulo-bienes-raices-1.onrender.com/admin/login" /tmp/login.html
+          grep -qi "Círculo Internacional" /tmp/login.html
+
+          fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json
+          python - <<'PY'
+          import json
+          with open('/tmp/properties.json', encoding='utf-8') as response:
+              payload = json.load(response)
+          assert isinstance(payload.get('properties'), list)
+          assert isinstance(payload.get('pagination'), dict)
+          print('Public property API returned valid JSON')
+          PY
+
+          fetch "https://circulo-inmobiliario.onrender.com/" /tmp/search-portal.html
+          grep -qi "Círculo" /tmp/search-portal.html
