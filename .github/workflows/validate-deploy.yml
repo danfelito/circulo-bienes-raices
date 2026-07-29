@@ -117,7 +117,7 @@ jobs:
     name: Check current Render services
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 12
+    timeout-minutes: 18
 
     steps:
       - name: Test active website, API and connected portal
@@ -155,13 +155,16 @@ jobs:
           check_html "Property catalog route" "https://circulo-bienes-raices-1.onrender.com/propiedades" "Círculo Internacional" properties
           check_html "Admin login route" "https://circulo-bienes-raices-1.onrender.com/admin/login" "Círculo Internacional" login
 
-          if fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
-            echo "API response headers:"
-            grep -iE '^(HTTP/|content-type:)' /tmp/api.headers || true
-            echo "API response preview:"
-            head -c 240 /tmp/properties.json || true
-            echo
-            if python - <<'PY'
+          api_ready=false
+          for attempt in {1..30}; do
+            echo "Render API verification attempt ${attempt}/30"
+            if fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
+              echo "API response headers:"
+              grep -iE '^(HTTP/|content-type:)' /tmp/api.headers || true
+              echo "API response preview:"
+              head -c 240 /tmp/properties.json || true
+              echo
+              if python - <<'PY'
           import json
           with open('/tmp/properties.json', encoding='utf-8-sig') as response:
               payload = json.load(response)
@@ -169,14 +172,16 @@ jobs:
           assert isinstance(payload.get('pagination'), dict)
           print('PASS: Public property API returned valid JSON')
           PY
-            then
-              true
-            else
-              echo "FAIL: Public property API did not return the expected JSON contract"
-              failures=$((failures + 1))
+              then
+                api_ready=true
+                break
+              fi
             fi
-          else
-            echo "FAIL: Public property API was unreachable"
+            sleep 20
+          done
+
+          if [[ "${api_ready}" != true ]]; then
+            echo "FAIL: Public property API did not return the expected JSON contract after deployment polling"
             failures=$((failures + 1))
           fi
 
