@@ -5,7 +5,7 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = process.env.ADMIN_EMAIL?.trim();
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
 
   if (!email || !password) {
@@ -17,14 +17,27 @@ async function main() {
   }
 
   const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) {
+  const passwordIsCurrent = existingUser
+    ? await bcrypt.compare(password, existingUser.password)
+    : false;
+
+  if (existingUser && passwordIsCurrent && existingUser.role === 'admin') {
     console.log(`ℹ️ Usuario administrador disponible: ${email}`);
     return;
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: {
+  const hashedPassword = passwordIsCurrent
+    ? existingUser.password
+    : await bcrypt.hash(password, 12);
+
+  await prisma.user.upsert({
+    where: { email },
+    update: {
+      password: hashedPassword,
+      name: existingUser?.name || 'Administrador',
+      role: 'admin',
+    },
+    create: {
       email,
       password: hashedPassword,
       name: 'Administrador',
@@ -32,7 +45,9 @@ async function main() {
     },
   });
 
-  console.log(`✅ Usuario administrador creado: ${email}`);
+  console.log(existingUser
+    ? `✅ Usuario administrador actualizado: ${email}`
+    : `✅ Usuario administrador creado: ${email}`);
 }
 
 main()
