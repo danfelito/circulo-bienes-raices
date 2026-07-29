@@ -63,36 +63,68 @@ jobs:
       - name: Test active website, API and connected portal
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          failures=0
 
           fetch() {
             local url="$1"
             local destination="$2"
+            local headers="$3"
             echo "Checking ${url}"
             curl --fail --silent --show-error --location \
               --retry 5 --retry-all-errors --retry-delay 12 \
               --connect-timeout 20 --max-time 120 \
+              --dump-header "${headers}" \
               --output "${destination}" "${url}"
           }
 
-          fetch "https://circulo-bienes-raices-1.onrender.com/" /tmp/home.html
-          grep -qi "Círculo Internacional" /tmp/home.html
+          check_html() {
+            local label="$1"
+            local url="$2"
+            local expected="$3"
+            local slug="$4"
+            if fetch "${url}" "/tmp/${slug}.html" "/tmp/${slug}.headers" && grep -qi "${expected}" "/tmp/${slug}.html"; then
+              echo "PASS: ${label}"
+            else
+              echo "FAIL: ${label}"
+              failures=$((failures + 1))
+            fi
+          }
 
-          fetch "https://circulo-bienes-raices-1.onrender.com/propiedades" /tmp/properties.html
-          grep -qi "Círculo Internacional" /tmp/properties.html
+          check_html "Main homepage" "https://circulo-bienes-raices-1.onrender.com/" "Círculo Internacional" home
+          check_html "Property catalog route" "https://circulo-bienes-raices-1.onrender.com/propiedades" "Círculo Internacional" properties
+          check_html "Admin login route" "https://circulo-bienes-raices-1.onrender.com/admin/login" "Círculo Internacional" login
 
-          fetch "https://circulo-bienes-raices-1.onrender.com/admin/login" /tmp/login.html
-          grep -qi "Círculo Internacional" /tmp/login.html
-
-          fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json
-          python - <<'PY'
+          if fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
+            echo "API response headers:"
+            grep -iE '^(HTTP/|content-type:)' /tmp/api.headers || true
+            echo "API response preview:"
+            head -c 240 /tmp/properties.json || true
+            echo
+            if python - <<'PY'
           import json
-          with open('/tmp/properties.json', encoding='utf-8') as response:
+          with open('/tmp/properties.json', encoding='utf-8-sig') as response:
               payload = json.load(response)
           assert isinstance(payload.get('properties'), list)
           assert isinstance(payload.get('pagination'), dict)
-          print('Public property API returned valid JSON')
+          print('PASS: Public property API returned valid JSON')
           PY
+            then
+              true
+            else
+              echo "FAIL: Public property API did not return the expected JSON contract"
+              failures=$((failures + 1))
+            fi
+          else
+            echo "FAIL: Public property API was unreachable"
+            failures=$((failures + 1))
+          fi
 
-          fetch "https://circulo-inmobiliario.onrender.com/" /tmp/search-portal.html
-          grep -qi "Círculo" /tmp/search-portal.html
+          check_html "Connected search portal" "https://circulo-inmobiliario.onrender.com/" "Círculo" search-portal
+
+          if (( failures > 0 )); then
+            echo "Smoke test completed with ${failures} failure(s)."
+            exit 1
+          fi
+
+          echo "All live smoke tests passed."
