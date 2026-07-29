@@ -18,6 +18,9 @@ const statsRoutes = require('./routes/stats');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Render terminates HTTPS at its proxy. Trust only the first proxy hop.
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
@@ -58,6 +61,8 @@ app.get('/api/config', (req, res) => {
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intenta más tarde' },
 });
 app.use('/api/', limiter);
