@@ -44,5 +44,5 @@ ENV PORT=5000
 
 EXPOSE 5000
 
-# Run migrations on startup then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+# Apply migrations, ensure the administrator exists, then start the server.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run ensure-admin && node src/index.js"]
