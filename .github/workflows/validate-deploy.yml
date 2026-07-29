@@ -113,8 +113,39 @@ jobs:
           node backend/scripts/smoke-runtime.js
           docker logs circulo-app
 
+  render-deploy:
+    name: Trigger Render deployment when configured
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+
+    steps:
+      - name: Trigger latest main deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${RENDER_DEPLOY_HOOK_URL}" ]]; then
+            echo "Triggering Render deploy hook."
+            curl --fail --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}"
+          elif [[ -n "${RENDER_API_KEY}" && -n "${RENDER_SERVICE_ID}" ]]; then
+            echo "Triggering Render API deployment for the merged commit."
+            curl --fail --silent --show-error \
+              --request POST \
+              --url "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+              --header "Accept: application/json" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data '{"clearCache":"clear","commitId":"c309478631c9e6b1356b8ef9e7d98b1f7f5c122a"}'
+          else
+            echo "No Render deploy hook or API credentials are configured in GitHub Actions secrets."
+          fi
+
   live-smoke:
     name: Check current Render services
+    needs: render-deploy
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 18
