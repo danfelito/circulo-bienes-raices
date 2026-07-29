@@ -30,7 +30,8 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:20-alpine
 
-WORKDIR /app
+# Preserve the monorepo layout expected by backend/src/index.js.
+WORKDIR /app/backend
 
 # Prisma también necesita OpenSSL durante las migraciones y en runtime.
 RUN apk add --no-cache openssl libc6-compat
@@ -39,8 +40,8 @@ RUN apk add --no-cache openssl libc6-compat
 COPY --from=builder /app/backend/node_modules ./node_modules
 COPY --from=builder /app/backend/ ./
 
-# Copy frontend build
-COPY --from=builder /app/frontend/dist ./frontend/dist
+# Copy frontend build beside the backend directory.
+COPY --from=builder /app/frontend/dist /app/frontend/dist
 
 # Environment
 ENV NODE_ENV=production
