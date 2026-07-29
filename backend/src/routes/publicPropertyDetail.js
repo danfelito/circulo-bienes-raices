@@ -4,8 +4,8 @@ const prisma = require('../config/db');
 const router = express.Router();
 
 // These exact routes belong to the main property router.
-router.get('/featured', (req, res, next) => next());
-router.get('/cities', (req, res, next) => next());
+router.get('/featured', (req, res, next) => next('router'));
+router.get('/cities', (req, res, next) => next('router'));
 
 // Public detail must never expose unpublished records.
 router.get('/:slug', async (req, res) => {
