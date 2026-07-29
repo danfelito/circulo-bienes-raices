@@ -6,6 +6,10 @@ WORKDIR /app
 # Prisma necesita OpenSSL para detectar el motor correcto en Alpine.
 RUN apk add --no-cache openssl libc6-compat
 
+# Prisma validates DATABASE_URL while generating the client. This value is
+# build-only; Render injects the real DATABASE_URL in the production container.
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+
 # Backend
 COPY backend/package*.json ./backend/
 COPY backend/prisma ./backend/prisma/
@@ -44,5 +48,5 @@ ENV PORT=5000
 
 EXPOSE 5000
 
-# Apply migrations, ensure the administrator exists, then start the server.
+# Apply migrations, synchronize the administrator, then start the server.
 CMD ["sh", "-c", "npx prisma migrate deploy && npm run ensure-admin && node src/index.js"]
