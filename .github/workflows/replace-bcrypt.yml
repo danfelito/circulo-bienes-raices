@@ -1,0 +1,61 @@
+name: Replace native bcrypt dependency
+
+on:
+  push:
+    branches:
+      - agent/audit-links-render-deploy
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/audit-links-render-deploy
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Replace bcrypt and regenerate lockfile
+        working-directory: backend
+        run: |
+          npm uninstall bcrypt
+          npm install bcryptjs@^3.0.3 --save
+
+      - name: Replace backend imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('backend/prisma/seed.js'),
+              Path('backend/prisma/ensure-admin.js'),
+              Path('backend/src/routes/auth.js'),
+          ]
+
+          for path in files:
+              content = path.read_text(encoding='utf-8')
+              updated = content.replace("require('bcrypt')", "require('bcryptjs')")
+              if updated == content:
+                  raise SystemExit(f'Expected bcrypt import was not found in {path}')
+              path.write_text(updated, encoding='utf-8')
+          PY
+
+      - name: Commit generated dependency files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/package.json backend/package-lock.json \
+            backend/prisma/seed.js backend/prisma/ensure-admin.js backend/src/routes/auth.js
+          git commit -m "Replace native bcrypt with bcryptjs [skip ci]"
+          git push origin HEAD:agent/audit-links-render-deploy
