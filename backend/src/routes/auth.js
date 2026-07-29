@@ -1,5 +1,5 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const prisma = require('../config/db');
 const { generateToken, authMiddleware } = require('../config/auth');
 

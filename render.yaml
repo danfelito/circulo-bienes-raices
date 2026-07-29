@@ -1,27 +1,36 @@
 services:
   - type: web
-    name: circulo-bienes-raices
+    name: circulo-bienes-raices-1
     runtime: docker
     plan: free
     env: docker
     dockerContext: .
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
-        value: admin@circulo.com
+        sync: false
       - key: ADMIN_PASSWORD
-        value: Admin123!
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: CONTACT_EMAIL
+        sync: false
+      - key: CONTACT_PHONE
+        sync: false
+      - key: WHATSAPP_NUMBER
+        sync: false
+      - key: CONTACT_ADDRESS
+        sync: false
       - key: NODE_ENV
         value: production
       - key: CORS_ORIGIN
-        value: true
+        value: https://circulo-bienes-raices-1.onrender.com

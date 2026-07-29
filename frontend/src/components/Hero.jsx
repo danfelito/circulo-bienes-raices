@@ -24,7 +24,7 @@ export default function Hero() {
         </motion.p>
         <motion.div initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }} animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 1.1 }} className="flex flex-col sm:flex-row items-center gap-4 mb-16">
           <Link to="/propiedades" className="liquid-glass-strong rounded-full px-8 py-3.5 flex items-center gap-2 text-sm font-medium">Ver Propiedades <ArrowUpRight className="w-4 h-4" /></Link>
-          <button className="flex items-center gap-2 text-sm font-medium text-white"><Play className="w-4 h-4 fill-white" /> Conoce Nuestros Servicios</button>
+          <a href="#servicios" className="flex items-center gap-2 text-sm font-medium text-white"><Play className="w-4 h-4 fill-white" /> Conoce Nuestros Servicios</a>
         </motion.div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full mb-16">
           <div className="liquid-glass rounded-2xl p-6 text-center"><Home className="w-8 h-8 text-white mx-auto mb-3" /><h3 className="text-white font-body font-medium mb-1">+500 Propiedades</h3><p className="text-white/60 text-sm">Disponibles exclusivamente</p></div>

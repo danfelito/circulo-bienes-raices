@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Hero from './components/Hero';
@@ -31,6 +31,20 @@ const Home = () => (
   </main>
 );
 
+const NotFound = () => (
+  <main className="theme-page min-h-screen pt-32 px-6 flex items-center justify-center text-center">
+    <div className="max-w-xl">
+      <p className="text-sm font-semibold text-amber-400 mb-3">Error 404</p>
+      <h1 className="text-4xl md:text-6xl font-heading italic mb-5">Esta página no existe</h1>
+      <p className="text-gray-400 mb-8">El enlace puede estar incompleto o la página pudo haber cambiado de ubicación.</p>
+      <div className="flex flex-col sm:flex-row justify-center gap-3">
+        <Link to="/" className="px-6 py-3 bg-amber-500 text-white font-semibold rounded-full">Volver al inicio</Link>
+        <Link to="/propiedades" className="px-6 py-3 border border-white/10 rounded-full">Ver propiedades</Link>
+      </div>
+    </div>
+  </main>
+);
+
 const AppLayout = () => {
   const location = useLocation();
   const hasIntegratedFooter = location.pathname === '/';
@@ -48,6 +62,7 @@ const AppLayout = () => {
         <Route path="/admin/propiedades/nueva" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
         <Route path="/admin/propiedades/:id/editar" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
         <Route path="/admin/consultas" element={<ProtectedRoute><AdminInquiries /></ProtectedRoute>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       {!hasIntegratedFooter && <Footer />}
     </div>

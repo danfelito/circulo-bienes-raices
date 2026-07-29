@@ -1,0 +1,190 @@
+name: Validate application and Docker deploy
+
+on:
+  push:
+    branches:
+      - main
+      - agent/**
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Validate Prisma schema and generate client
+        working-directory: backend
+        run: |
+          npx prisma validate
+          npx prisma generate
+
+      - name: Check backend JavaScript syntax
+        run: |
+          find backend/src backend/prisma backend/scripts -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build production Docker image
+        run: docker build --tag circulo-bienes-raices:test .
+
+      - name: Run production container integration test
+        shell: bash
+        env:
+          SMOKE_ADMIN_EMAIL: smoke-admin@example.com
+          SMOKE_ADMIN_PASSWORD: SmokePassword123x
+          SMOKE_BASE_URL: http://127.0.0.1:5000
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker rm -f circulo-app circulo-db >/dev/null 2>&1 || true
+            docker network rm circulo-test >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create circulo-test
+          docker run --detach --name circulo-db --network circulo-test \
+            --env POSTGRES_USER=circulo \
+            --env POSTGRES_PASSWORD=circulo \
+            --env POSTGRES_DB=circulo \
+            postgres:16-alpine
+
+          for attempt in {1..30}; do
+            if docker exec circulo-db pg_isready -U circulo -d circulo >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec circulo-db pg_isready -U circulo -d circulo
+
+          docker run --detach --name circulo-app --network circulo-test \
+            --publish 5000:5000 \
+            --env DATABASE_URL=postgresql://circulo:circulo@circulo-db:5432/circulo \
+            --env JWT_SECRET=smoke-test-jwt-secret-with-more-than-thirty-characters \
+            --env ADMIN_EMAIL="${SMOKE_ADMIN_EMAIL}" \
+            --env ADMIN_PASSWORD="${SMOKE_ADMIN_PASSWORD}" \
+            --env CORS_ORIGIN=http://127.0.0.1:5000 \
+            circulo-bienes-raices:test
+
+          app_ready=false
+          for attempt in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:5000/api/health >/dev/null 2>&1; then
+              app_ready=true
+              break
+            fi
+            if ! docker inspect --format='{{.State.Running}}' circulo-app 2>/dev/null | grep -q true; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "${app_ready}" != true ]]; then
+            echo "Application container did not become healthy."
+            docker logs circulo-app || true
+            exit 1
+          fi
+
+          node backend/scripts/smoke-runtime.js
+          docker logs circulo-app
+
+  live-smoke:
+    name: Check current Render services
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 12
+
+    steps:
+      - name: Test active website, API and connected portal
+        shell: bash
+        run: |
+          set -uo pipefail
+          failures=0
+
+          fetch() {
+            local url="$1"
+            local destination="$2"
+            local headers="$3"
+            echo "Checking ${url}"
+            curl --fail --silent --show-error --location \
+              --retry 5 --retry-all-errors --retry-delay 12 \
+              --connect-timeout 20 --max-time 120 \
+              --dump-header "${headers}" \
+              --output "${destination}" "${url}"
+          }
+
+          check_html() {
+            local label="$1"
+            local url="$2"
+            local expected="$3"
+            local slug="$4"
+            if fetch "${url}" "/tmp/${slug}.html" "/tmp/${slug}.headers" && grep -qi "${expected}" "/tmp/${slug}.html"; then
+              echo "PASS: ${label}"
+            else
+              echo "FAIL: ${label}"
+              failures=$((failures + 1))
+            fi
+          }
+
+          check_html "Main homepage" "https://circulo-bienes-raices-1.onrender.com/" "Círculo Internacional" home
+          check_html "Property catalog route" "https://circulo-bienes-raices-1.onrender.com/propiedades" "Círculo Internacional" properties
+          check_html "Admin login route" "https://circulo-bienes-raices-1.onrender.com/admin/login" "Círculo Internacional" login
+
+          if fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
+            echo "API response headers:"
+            grep -iE '^(HTTP/|content-type:)' /tmp/api.headers || true
+            echo "API response preview:"
+            head -c 240 /tmp/properties.json || true
+            echo
+            if python - <<'PY'
+          import json
+          with open('/tmp/properties.json', encoding='utf-8-sig') as response:
+              payload = json.load(response)
+          assert isinstance(payload.get('properties'), list)
+          assert isinstance(payload.get('pagination'), dict)
+          print('PASS: Public property API returned valid JSON')
+          PY
+            then
+              true
+            else
+              echo "FAIL: Public property API did not return the expected JSON contract"
+              failures=$((failures + 1))
+            fi
+          else
+            echo "FAIL: Public property API was unreachable"
+            failures=$((failures + 1))
+          fi
+
+          check_html "Connected search portal" "https://circulo-inmobiliario.onrender.com/" "Círculo" search-portal
+
+          if (( failures > 0 )); then
+            echo "Smoke test completed with ${failures} failure(s)."
+            exit 1
+          fi
+
+          echo "All live smoke tests passed."
