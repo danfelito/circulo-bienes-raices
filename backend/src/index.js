@@ -9,6 +9,7 @@ const path = require('path');
 
 const prisma = require('./config/db');
 const authRoutes = require('./routes/auth');
+const publicPropertyDetailRoutes = require('./routes/publicPropertyDetail');
 const propertyRoutes = require('./routes/properties');
 const adminPropertyRoutes = require('./routes/adminProperties');
 const inquiryRoutes = require('./routes/inquiries');
@@ -68,6 +69,7 @@ app.use(express.urlencoded({ extended: true }));
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/properties', adminPropertyRoutes);
+app.use('/api/properties', publicPropertyDetailRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/stats', statsRoutes);
