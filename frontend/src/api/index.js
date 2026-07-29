@@ -6,6 +6,12 @@ const getAuthHeaders = () => {
 };
 
 const api = {
+  getConfig: async () => {
+    const res = await fetch(`${API_BASE}/config`);
+    if (!res.ok) throw new Error('Error al cargar la configuración');
+    return res.json();
+  },
+
   // Auth
   login: async (email, password) => {
     const res = await fetch(`${API_BASE}/auth/login`, {
@@ -62,6 +68,25 @@ const api = {
   },
 
   // Properties - Admin
+  getAdminProperties: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/admin/properties?${query}`, {
+      headers: { ...getAuthHeaders() },
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Error al cargar propiedades administrativas');
+    return res.json();
+  },
+
+  getAdminProperty: async (id) => {
+    const res = await fetch(`${API_BASE}/admin/properties/${id}`, {
+      headers: { ...getAuthHeaders() },
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Propiedad no encontrada');
+    return res.json();
+  },
+
   createProperty: async (data) => {
     const res = await fetch(`${API_BASE}/properties`, {
       method: 'POST',
