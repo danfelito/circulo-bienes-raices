@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Eye, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Pencil, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
 import api from '../../api';
+
+const isVideo = media => media?.publicId?.startsWith('video:') || /\.(mp4|mov|m4v|webm)(?:\?|$)/i.test(media?.url || '');
+const coverFor = property => property.photos?.find(photo => !isVideo(photo))?.url || '/images/placeholder.svg';
 
 const AdminProperties = () => {
   const [properties, setProperties] = useState([]);
@@ -57,14 +60,24 @@ const AdminProperties = () => {
   return (
     <main className="pt-20 min-h-screen bg-[#0a0a0a]">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">Propiedades</h1>
             <p className="text-gray-400 text-sm">{pagination.total} propiedades registradas</p>
           </div>
-          <Link to="/admin/propiedades/nueva" className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white font-semibold rounded-lg">
-            <Plus size={18} /> Nueva propiedad
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link to="/admin/propiedades/importar" className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-400/10 border border-amber-400/25 text-amber-300 font-semibold rounded-lg">
+              <Sparkles size={18} /> Importar carpeta con IA
+            </Link>
+            <Link to="/admin/propiedades/nueva" className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 text-white font-semibold rounded-lg">
+              <Plus size={18} /> Nueva propiedad manual
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-6 p-4 bg-white/[0.03] border border-white/5 rounded-xl flex items-start gap-3">
+          <Sparkles size={20} className="text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-400"><strong className="text-white">Nuevo flujo automático:</strong> sube una carpeta o ZIP con documentos, fotografías y videos. La IA prepara la ficha y te permite revisarla antes de publicar.</p>
         </div>
 
         {loading ? (
@@ -90,10 +103,10 @@ const AdminProperties = () => {
                   <tr key={property.id} className="border-b border-white/5 hover:bg-white/5">
                     <td className="p-3">
                       <div className="flex items-center gap-3">
-                        <img src={property.photos?.[0]?.url || '/images/placeholder.svg'} alt={property.title} className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={coverFor(property)} alt={property.title} className="w-10 h-10 rounded-lg object-cover" />
                         <div>
                           <p className="font-medium text-white">{property.title}</p>
-                          <p className="text-xs text-gray-400">{property.city}</p>
+                          <p className="text-xs text-gray-400">{property.city} · {property.photos?.length || 0} medios</p>
                         </div>
                       </div>
                     </td>
