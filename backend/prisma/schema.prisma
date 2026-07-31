@@ -25,11 +25,11 @@ model Property {
   slug          String    @unique
   description   String    @db.Text
   operation     String    // venta, renta
-  type          String    // casa, departamento, terreno, oficina, local, otros
+  type          String    // casa, departamento, terreno, oficina, local, bodega, rancho, otros
   price         Float
   currency      String    @default("MXN")
   bedrooms      Int?
-  bathrooms     Int?
+  bathrooms     Float?    // admite medios baños, por ejemplo 2.5
   area          Float?    // m2 construcción
   lotArea       Float?    // m2 terreno
   parking       Int?
@@ -57,7 +57,7 @@ model Property {
 model Photo {
   id         String   @id @default(cuid())
   url        String
-  publicId   String?  // Cloudinary public_id for deletion
+  publicId   String?  // Cloudinary public_id; videos use the prefix video:
   alt        String?
   order      Int      @default(0)
   isMain     Boolean  @default(false)
