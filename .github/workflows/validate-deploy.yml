@@ -151,11 +151,11 @@ jobs:
             fi
           }
 
-          check_html "Main homepage" "https://circulo-bienes-raices-1.onrender.com/" "Círculo Internacional" home
-          check_html "Property catalog route" "https://circulo-bienes-raices-1.onrender.com/propiedades" "Círculo Internacional" properties
-          check_html "Admin login route" "https://circulo-bienes-raices-1.onrender.com/admin/login" "Círculo Internacional" login
+          check_html "Main homepage" "https://circulo-bienes-raices-2.onrender.com/" "Círculo Internacional" home
+          check_html "Property catalog route" "https://circulo-bienes-raices-2.onrender.com/propiedades" "Círculo Internacional" properties
+          check_html "Admin login route" "https://circulo-bienes-raices-2.onrender.com/admin/login" "Círculo Internacional" login
 
-          if fetch "https://circulo-bienes-raices-1.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
+          if fetch "https://circulo-bienes-raices-2.onrender.com/api/properties?limit=1" /tmp/properties.json /tmp/api.headers; then
             echo "API response headers:"
             grep -iE '^(HTTP/|content-type:)' /tmp/api.headers || true
             echo "API response preview:"
