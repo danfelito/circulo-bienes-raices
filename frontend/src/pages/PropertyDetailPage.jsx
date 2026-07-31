@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Bath, Bed, Car, ChevronLeft, ChevronRight, Mail, MapPin, Maximize, MessageCircle, Phone } from 'lucide-react';
+import { ArrowLeft, Bath, Bed, Car, ChevronLeft, ChevronRight, Mail, MapPin, Maximize, MessageCircle, Phone, Play } from 'lucide-react';
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -23,6 +23,9 @@ const parseFeatures = value => {
     return [];
   }
 };
+
+const isVideo = media => media?.publicId?.startsWith('video:') || /\.(mp4|mov|m4v|webm|avi|mkv)(?:\?|$)/i.test(media?.url || '');
+const firstImage = property => property?.photos?.find(photo => !isVideo(photo));
 
 const PropertyDetailPage = () => {
   const { slug } = useParams();
@@ -72,6 +75,7 @@ const PropertyDetailPage = () => {
 
   const features = parseFeatures(property.features);
   const photos = property.photos || [];
+  const currentMedia = photos[currentPhoto];
   const whatsappNumber = (config.whatsappNumber || '').replace(/\D/g, '');
   const whatsappText = encodeURIComponent(`Hola, me interesa la propiedad: ${property.title}`);
   const phoneHref = config.contactPhone ? `tel:${config.contactPhone.replace(/[^+\d]/g, '')}` : '';
@@ -87,17 +91,40 @@ const PropertyDetailPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="relative h-64 sm:h-96 rounded-2xl overflow-hidden bg-white/5">
-              <img src={photos[currentPhoto]?.url || '/images/placeholder.svg'} alt={property.title} className="w-full h-full object-cover" />
+              {currentMedia && isVideo(currentMedia) ? (
+                <video
+                  key={currentMedia.id || currentMedia.url}
+                  src={currentMedia.url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full h-full object-contain bg-black"
+                  aria-label={currentMedia.alt || `Video de ${property.title}`}
+                />
+              ) : (
+                <img src={currentMedia?.url || '/images/placeholder.svg'} alt={currentMedia?.alt || property.title} className="w-full h-full object-cover" />
+              )}
+              {currentMedia && isVideo(currentMedia) && <span className="absolute top-3 left-3 px-3 py-1.5 bg-black/70 rounded-full text-white text-xs flex items-center gap-1.5 pointer-events-none"><Play size={13} /> Video del inmueble</span>}
               {photos.length > 1 && (
                 <>
-                  <button type="button" onClick={() => setCurrentPhoto(current => (current - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Foto anterior"><ChevronLeft size={20} /></button>
-                  <button type="button" onClick={() => setCurrentPhoto(current => (current + 1) % photos.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Foto siguiente"><ChevronRight size={20} /></button>
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {photos.map((photo, index) => <button type="button" key={photo.id || index} onClick={() => setCurrentPhoto(index)} className={`w-2 h-2 rounded-full ${index === currentPhoto ? 'bg-amber-400' : 'bg-white/40'}`} aria-label={`Ver foto ${index + 1}`} />)}
+                  <button type="button" onClick={() => setCurrentPhoto(current => (current - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo anterior"><ChevronLeft size={20} /></button>
+                  <button type="button" onClick={() => setCurrentPhoto(current => (current + 1) % photos.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo siguiente"><ChevronRight size={20} /></button>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 max-w-[80%] overflow-x-auto p-1 rounded-full bg-black/25">
+                    {photos.map((media, index) => <button type="button" key={media.id || index} onClick={() => setCurrentPhoto(index)} className={`w-2.5 h-2.5 shrink-0 rounded-full ${index === currentPhoto ? 'bg-amber-400' : isVideo(media) ? 'bg-blue-400/80' : 'bg-white/50'}`} aria-label={`Ver ${isVideo(media) ? 'video' : 'foto'} ${index + 1}`} />)}
                   </div>
                 </>
               )}
             </div>
+
+            {photos.length > 1 && (
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                {photos.map((media, index) => (
+                  <button type="button" key={`thumb-${media.id || index}`} onClick={() => setCurrentPhoto(index)} className={`relative h-16 rounded-lg overflow-hidden border ${index === currentPhoto ? 'border-amber-400' : 'border-white/10'} bg-black`}>
+                    {isVideo(media) ? <><video src={media.url} muted preload="metadata" className="w-full h-full object-cover opacity-70" /><Play size={18} className="absolute inset-0 m-auto text-white" /></> : <img src={media.url} alt={media.alt || property.title} className="w-full h-full object-cover" />}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className="flex flex-wrap items-center gap-3 mb-2">
@@ -170,7 +197,7 @@ const PropertyDetailPage = () => {
                   {related.map(item => (
                     <Link key={item.id} to={`/propiedades/${item.slug}`} className="block group">
                       <div className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                        <img src={item.photos?.[0]?.url || '/images/placeholder.svg'} alt={item.title} className="w-16 h-16 rounded-lg object-cover" />
+                        <img src={firstImage(item)?.url || '/images/placeholder.svg'} alt={item.title} className="w-16 h-16 rounded-lg object-cover" />
                         <div><p className="text-sm font-medium text-white">{item.title}</p><p className="text-xs text-gray-400">{item.city}</p><p className="text-sm font-bold text-amber-400">${item.price.toLocaleString('es-MX')}</p></div>
                       </div>
                     </Link>
