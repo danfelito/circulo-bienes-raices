@@ -7,18 +7,40 @@ Plataforma inmobiliaria completa con frontend React y backend Express + Prisma +
 Monorepo con **frontend React** + **backend Express** + **Prisma ORM** + **PostgreSQL**, desplegable como un solo servicio Docker en Render.
 
 ### Backend (Express + Prisma + PostgreSQL)
-- **Modelos**: Property (27 campos), Photo, Inquiry, User
+- **Modelos**: Property, Photo/Media, Inquiry y User
 - **Autenticación**: JWT en cookie HttpOnly + bcrypt
-- **API Pública**: GET /api/properties (filtros, paginación), GET /api/properties/:slug, GET /api/properties/featured, POST /api/inquiries
-- **API Admin**: CRUD completo de propiedades, cambio de estado, estadísticas, gestión de consultas
-- **Fotos**: Cloudinary (persistencia entre despliegues)
-- **Seguridad**: Helmet, CORS, Rate Limit, Compression, Honeypot anti-spam
+- **API Pública**: catálogo, detalle, propiedades destacadas y consultas
+- **API Admin**: CRUD de propiedades, estado, estadísticas, consultas e importación asistida
+- **Medios**: fotografías y videos persistentes en Cloudinary
+- **IA inmobiliaria**: lectura de documentos, fotografías e inventario mediante OpenAI Responses API
+- **Seguridad**: Helmet, CORS, Rate Limit, Compression y Honeypot anti-spam
 
 ### Frontend (React + Tailwind + Framer Motion)
-- **Catálogo**: Filtros por operación/tipo/ciudad, búsqueda, paginación, ordenamiento
-- **Detalle de propiedad**: Galería, mapa Leaflet, formulario de contacto, WhatsApp, propiedades relacionadas
-- **Panel Admin**: Dashboard con estadísticas, CRUD propiedades, gestión de fotos, consultas
-- **Login Admin**: /admin/login
+- **Catálogo**: filtros por operación, tipo y ciudad; búsqueda, paginación y ordenamiento
+- **Detalle de propiedad**: galería mixta de fotografías y videos, mapa, contacto y propiedades relacionadas
+- **Panel Admin**: dashboard, CRUD, consultas e importación por carpeta o ZIP
+- **Login Admin**: `/admin/login`
+
+## Importación de propiedades con IA
+
+Ruta administrativa: `/admin/propiedades/importar`
+
+Flujo:
+
+1. Arrastrar una carpeta, seleccionar una carpeta, cargar un ZIP o pegar archivos.
+2. El servidor clasifica documentos, fotografías y videos.
+3. La IA extrae precio, operación, tipo, ubicación, superficies, habitaciones, amenidades y descripción.
+4. El administrador revisa los datos, las alertas y la fotografía principal.
+5. Al confirmar, se crea la propiedad, se optimizan los medios y se publica en `/propiedades`.
+
+Formatos principales:
+
+- Fotografías: JPG, PNG, WebP, GIF, AVIF y HEIC/HEIF cuando Cloudinary los admite.
+- Videos: MP4, MOV, M4V, WebM, AVI y MKV cuando Cloudinary los admite.
+- Documentos: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT, Markdown, CSV y JSON.
+- También se acepta un archivo ZIP que contenga el expediente completo.
+
+La publicación se prepara como borrador revisable. Los datos sensibles o ausentes no se inventan; el sistema los marca para confirmación.
 
 ## Rutas
 
@@ -29,8 +51,10 @@ Monorepo con **frontend React** + **backend Express** + **Prisma ORM** + **Postg
 | `/propiedades/:slug` | Detalle de propiedad |
 | `/admin/login` | Login administración |
 | `/admin` | Dashboard administración |
-| `/admin/propiedades/nueva` | Crear propiedad |
-| `/admin/propiedades/:id/editar` | Editar propiedad |
+| `/admin/propiedades` | Gestión de propiedades |
+| `/admin/propiedades/importar` | Importación por carpeta con IA |
+| `/admin/propiedades/nueva` | Crear propiedad manualmente |
+| `/admin/propiedades/:id/editar` | Editar propiedad y medios |
 | `/admin/consultas` | Gestión de consultas |
 
 ## Desarrollo Local
@@ -42,7 +66,7 @@ cd ../frontend && npm install
 
 # 2. Configurar .env en backend/
 cp backend/.env.example backend/.env
-# Editar DATABASE_URL, JWT_SECRET, Cloudinary, Admin credentials
+# Editar DATABASE_URL, JWT_SECRET, Cloudinary, OpenAI y credenciales de administrador
 
 # 3. Base de datos
 cd backend
@@ -52,64 +76,43 @@ npm run seed
 # 4. Iniciar backend
 npm run dev
 
-# 5. Iniciar frontend (en otra terminal)
+# 5. Iniciar frontend en otra terminal
 cd ../frontend
 npm run dev
 ```
 
 ## Despliegue en Render
 
-### Configuración necesaria:
+Variables necesarias:
 
-1. **Push a GitHub**: `git push origin main`
-2. **Crear PostgreSQL** en Render → copiar URL a `DATABASE_URL`
-3. **Configurar Cloudinary**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-4. **Configurar admin**: `ADMIN_EMAIL` y `ADMIN_PASSWORD`
-5. **JWT_SECRET**: Generar un string aleatorio seguro (Render lo puede generar automáticamente)
+1. `DATABASE_URL`
+2. `JWT_SECRET`
+3. `ADMIN_EMAIL`
+4. `ADMIN_PASSWORD`
+5. `CLOUDINARY_CLOUD_NAME`
+6. `CLOUDINARY_API_KEY`
+7. `CLOUDINARY_API_SECRET`
+8. `OPENAI_API_KEY`
+9. `OPENAI_PROPERTY_MODEL` — valor recomendado en el proyecto: `gpt-5`
+10. Datos públicos de contacto: `CONTACT_EMAIL`, `CONTACT_PHONE`, `WHATSAPP_NUMBER`, `CONTACT_ADDRESS`
 
-### Crear servicio en Render:
-- Conectar repo `danfelito/circulo-bienes-raices`
-- Seleccionar **Docker** como runtime
-- El `render.yaml` configura todo automáticamente
+El sistema sigue ofreciendo lectura básica si `OPENAI_API_KEY` no está configurada, pero la interpretación visual y documental completa requiere esa variable.
 
-## Estructura
+### Crear servicio en Render
 
-```
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma
-│   │   ├── seed.js
-│   │   └── migrations/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── auth.js
-│   │   │   ├── cloudinary.js
-│   │   │   └── db.js
-│   │   ├── routes/
-│   │   │   ├── auth.js
-│   │   │   ├── properties.js
-│   │   │   ├── inquiries.js
-│   │   │   └── stats.js
-│   │   └── index.js
-│   ├── .env.example
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── api/index.js
-│   │   ├── components/
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── PropertiesPage.jsx
-│   │   │   ├── PropertyDetailPage.jsx
-│   │   │   └── admin/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-├── Dockerfile
-├── render.yaml
-└── .gitignore
-```
+- Conectar `danfelito/circulo-bienes-raices`.
+- Seleccionar Docker como runtime.
+- Usar `/api/health` como health check.
+- El archivo `render.yaml` contiene la configuración del servicio `circulo-bienes-raices-2`.
+
+## Validación automática
+
+GitHub Actions verifica en cada cambio:
+
+- Esquema Prisma y generación del cliente.
+- Sintaxis del backend.
+- Compilación del frontend.
+- Construcción de la imagen Docker.
+- Arranque con PostgreSQL real.
+- Login, análisis de una mini carpeta inmobiliaria, catálogo, CRUD, consultas y estadísticas.
+- Disponibilidad del servicio de Render y del portal conectado.
