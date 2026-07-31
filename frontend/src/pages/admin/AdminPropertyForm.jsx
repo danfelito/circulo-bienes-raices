@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Image, Save, Star, Upload, X } from 'lucide-react';
+import { Image, Play, Save, Star, Upload, X } from 'lucide-react';
 import api from '../../api';
 
 const emptyForm = {
@@ -20,6 +20,8 @@ const parseFeatures = value => {
     return '';
   }
 };
+
+const isVideo = media => media?.publicId?.startsWith('video:') || /\.(mp4|mov|m4v|webm|avi|mkv)(?:\?|$)/i.test(media?.url || '');
 
 const AdminPropertyForm = () => {
   const navigate = useNavigate();
@@ -83,7 +85,7 @@ const AdminPropertyForm = () => {
       ...form,
       price: Number.parseFloat(form.price) || 0,
       bedrooms: form.bedrooms === '' ? null : Number.parseInt(form.bedrooms, 10),
-      bathrooms: form.bathrooms === '' ? null : Number.parseInt(form.bathrooms, 10),
+      bathrooms: form.bathrooms === '' ? null : Number.parseFloat(form.bathrooms),
       area: form.area === '' ? null : Number.parseFloat(form.area),
       lotArea: form.lotArea === '' ? null : Number.parseFloat(form.lotArea),
       parking: form.parking === '' ? null : Number.parseInt(form.parking, 10),
@@ -110,7 +112,7 @@ const AdminPropertyForm = () => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
     if (!isEdit) {
-      alert('Primero guarda la propiedad para poder subir fotos');
+      alert('Primero guarda la propiedad para poder subir fotografías o videos');
       return;
     }
 
@@ -127,7 +129,7 @@ const AdminPropertyForm = () => {
   };
 
   const handleDeletePhoto = async photoId => {
-    if (!window.confirm('¿Eliminar esta foto?')) return;
+    if (!window.confirm('¿Eliminar este archivo?')) return;
     try {
       await api.deletePhoto(id, photoId);
       setPhotos(current => current.filter(photo => photo.id !== photoId));
@@ -173,7 +175,7 @@ const AdminPropertyForm = () => {
               {fields.map(([name, label, type, required]) => (
                 <label key={name} className="text-xs text-gray-400">
                   <span className="mb-1 block">{label}</span>
-                  <input name={name} type={type} step={name === 'lat' || name === 'lng' ? 'any' : undefined} value={form[name]} onChange={handleChange} required={required} className={inputClass} />
+                  <input name={name} type={type} step={['lat', 'lng', 'bathrooms'].includes(name) ? 'any' : undefined} value={form[name]} onChange={handleChange} required={required} className={inputClass} />
                 </label>
               ))}
             </div>
@@ -196,7 +198,7 @@ const AdminPropertyForm = () => {
               </label>
               <label className="text-xs text-gray-400">Tipo
                 <select name="type" value={form.type} onChange={handleChange} className={inputClass}>
-                  {['casa', 'departamento', 'terreno', 'oficina', 'local', 'otros'].map(type => <option key={type} value={type}>{type}</option>)}
+                  {['casa', 'departamento', 'terreno', 'oficina', 'local', 'bodega', 'rancho', 'otros'].map(type => <option key={type} value={type}>{type}</option>)}
                 </select>
               </label>
               <label className="text-xs text-gray-400">Estado
@@ -215,29 +217,31 @@ const AdminPropertyForm = () => {
           {isEdit && (
             <section className="p-6 bg-white/5 rounded-2xl border border-white/5 space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-white">Fotos</h2>
+                <div><h2 className="text-lg font-semibold text-white">Fotografías y videos</h2><p className="text-xs text-gray-500 mt-1">Las fotografías se optimizan para web; los videos conservan controles de reproducción.</p></div>
                 <label className="flex items-center gap-2 px-4 py-2 bg-amber-400/10 border border-amber-400/20 text-amber-400 rounded-lg cursor-pointer">
-                  <Upload size={16} /> {uploading ? 'Subiendo...' : 'Subir fotos'}
-                  <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
+                  <Upload size={16} /> {uploading ? 'Subiendo...' : 'Subir medios'}
+                  <input type="file" accept="image/*,video/*" multiple onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
                 </label>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {photos.map(photo => (
-                  <div key={photo.id} className="relative group">
-                    <img src={photo.url} alt={photo.alt || form.title} className="w-full h-32 object-cover rounded-lg" />
-                    {photo.isMain && <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-amber-400 text-white text-xs rounded flex items-center gap-1"><Star size={10} /> Principal</span>}
+                {photos.map(photo => {
+                  const video = isVideo(photo);
+                  return <div key={photo.id} className="relative group bg-black/40 rounded-lg overflow-hidden">
+                    {video ? <video src={photo.url} className="w-full h-32 object-cover" muted preload="metadata" /> : <img src={photo.url} alt={photo.alt || form.title} className="w-full h-32 object-cover" />}
+                    {photo.isMain && !video && <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-amber-400 text-black text-xs rounded flex items-center gap-1"><Star size={10} /> Principal</span>}
+                    {video && <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded flex items-center gap-1"><Play size={10} /> Video</span>}
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center gap-2">
-                      {!photo.isMain && <button type="button" onClick={() => handleSetMain(photo.id)} className="p-2 bg-amber-400 text-white rounded" aria-label="Establecer foto principal"><Star size={14} /></button>}
-                      <button type="button" onClick={() => handleDeletePhoto(photo.id)} className="p-2 bg-red-500 text-white rounded" aria-label="Eliminar foto"><X size={14} /></button>
+                      {!video && !photo.isMain && <button type="button" onClick={() => handleSetMain(photo.id)} className="p-2 bg-amber-400 text-black rounded" aria-label="Establecer foto principal"><Star size={14} /></button>}
+                      <button type="button" onClick={() => handleDeletePhoto(photo.id)} className="p-2 bg-red-500 text-white rounded" aria-label="Eliminar archivo"><X size={14} /></button>
                     </div>
-                  </div>
-                ))}
-                {!photos.length && <div className="col-span-full text-center py-8 text-gray-500"><Image size={32} className="mx-auto mb-2" />Sin fotos</div>}
+                  </div>;
+                })}
+                {!photos.length && <div className="col-span-full text-center py-8 text-gray-500"><Image size={32} className="mx-auto mb-2" />Sin fotografías ni videos</div>}
               </div>
             </section>
           )}
 
-          {!isEdit && <p className="text-sm text-gray-400">Guarda la propiedad y después entra a editarla para subir fotografías.</p>}
+          {!isEdit && <p className="text-sm text-gray-400">Guarda la propiedad y después entra a editarla para subir fotografías o videos.</p>}
 
           <div className="flex gap-4">
             <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 bg-amber-500 text-white font-semibold rounded-lg disabled:opacity-50"><Save size={18} /> {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Crear propiedad'}</button>
