@@ -5,6 +5,22 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const readError = async (res, fallback) => {
+  try {
+    const payload = await res.json();
+    return payload.error || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const appendFiles = (formData, files) => {
+  files.forEach(file => {
+    const relativePath = file.webkitRelativePath || file.relativePath || file.name;
+    formData.append('files', file, relativePath);
+  });
+};
+
 const api = {
   getConfig: async () => {
     const res = await fetch(`${API_BASE}/config`);
@@ -20,10 +36,7 @@ const api = {
       credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error de login');
-    }
+    if (!res.ok) throw new Error(await readError(res, 'Error de login'));
     return res.json();
   },
 
@@ -94,10 +107,7 @@ const api = {
       credentials: 'include',
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al crear');
-    }
+    if (!res.ok) throw new Error(await readError(res, 'Error al crear'));
     return res.json();
   },
 
@@ -108,10 +118,7 @@ const api = {
       credentials: 'include',
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al actualizar');
-    }
+    if (!res.ok) throw new Error(await readError(res, 'Error al actualizar'));
     return res.json();
   },
 
@@ -145,7 +152,7 @@ const api = {
       credentials: 'include',
       body: formData,
     });
-    if (!res.ok) throw new Error('Error al subir fotos');
+    if (!res.ok) throw new Error(await readError(res, 'Error al subir archivos multimedia'));
     return res.json();
   },
 
@@ -155,7 +162,7 @@ const api = {
       headers: { ...getAuthHeaders() },
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('Error al eliminar foto');
+    if (!res.ok) throw new Error('Error al eliminar archivo');
     return res.json();
   },
 
@@ -165,12 +172,39 @@ const api = {
       headers: { ...getAuthHeaders() },
       credentials: 'include',
     });
-    if (!res.ok) throw new Error('Error al establecer foto principal');
+    if (!res.ok) throw new Error(await readError(res, 'Error al establecer foto principal'));
+    return res.json();
+  },
+
+  analyzePropertyFolder: async files => {
+    const formData = new FormData();
+    appendFiles(formData, files);
+    const res = await fetch(`${API_BASE}/admin/property-import/analyze`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await readError(res, 'No se pudo analizar la carpeta'));
+    return res.json();
+  },
+
+  publishPropertyFolder: async (draft, files) => {
+    const formData = new FormData();
+    formData.append('draft', JSON.stringify(draft));
+    appendFiles(formData, files);
+    const res = await fetch(`${API_BASE}/admin/property-import/publish`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await readError(res, 'No se pudo publicar la propiedad'));
     return res.json();
   },
 
   // Inquiries
-  submitInquiry: async (data) => {
+  submitInquiry: async data => {
     const res = await fetch(`${API_BASE}/inquiries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -190,7 +224,7 @@ const api = {
     return res.json();
   },
 
-  markInquiryRead: async (id) => {
+  markInquiryRead: async id => {
     const res = await fetch(`${API_BASE}/inquiries/${id}/read`, {
       method: 'PATCH',
       headers: { ...getAuthHeaders() },
@@ -200,7 +234,7 @@ const api = {
     return res.json();
   },
 
-  deleteInquiry: async (id) => {
+  deleteInquiry: async id => {
     const res = await fetch(`${API_BASE}/inquiries/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeaders() },
