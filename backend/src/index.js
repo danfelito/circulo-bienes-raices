@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
+const { installOpenAIFetchNormalizer } = require('./config/openaiFetch');
 const prisma = require('./config/db');
 const authRoutes = require('./routes/auth');
 const publicPropertyDetailRoutes = require('./routes/publicPropertyDetail');
@@ -15,6 +16,8 @@ const adminPropertyRoutes = require('./routes/adminProperties');
 const propertyImportRoutes = require('./routes/propertyImport');
 const inquiryRoutes = require('./routes/inquiries');
 const statsRoutes = require('./routes/stats');
+
+installOpenAIFetchNormalizer();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
