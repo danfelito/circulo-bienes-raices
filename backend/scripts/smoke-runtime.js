@@ -29,6 +29,39 @@ function authHeaders(token, json = false) {
   };
 }
 
+async function testPropertyFolderAnalysis(token) {
+  const formData = new FormData();
+  const propertyText = [
+    'Casa de prueba automatizada',
+    'Precio: $2,750,000 MXN',
+    'Venta de casa con 3 recámaras, 2 baños, 180 m2 de construcción y 220 m2 de terreno.',
+    'Cuenta con jardín, terraza, aire acondicionado y 2 estacionamientos.',
+  ].join('\n');
+  const onePixelPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z8ZkAAAAASUVORK5CYII=',
+    'base64',
+  );
+
+  formData.append('files', new Blob([propertyText], { type: 'text/plain' }), 'expediente/ficha-tecnica.txt');
+  formData.append('files', new Blob([onePixelPng], { type: 'image/png' }), 'expediente/fachada-principal.png');
+
+  const analysis = await request('/api/admin/property-import/analyze', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: formData,
+  });
+
+  if (!analysis.payload?.draft || !analysis.payload?.review) {
+    throw new Error('Property folder analysis did not return a draft and review');
+  }
+  if (analysis.payload?.inventory?.counts?.images !== 1 || analysis.payload?.inventory?.counts?.documents !== 1) {
+    throw new Error('Property folder analysis returned an incorrect file inventory');
+  }
+  if (analysis.payload?.draft?.operation !== 'venta' || analysis.payload?.draft?.bedrooms !== 3) {
+    throw new Error('Property folder fallback extraction did not identify expected property facts');
+  }
+}
+
 async function main() {
   const unique = Date.now();
   const title = `Smoke Test Property ${unique}`;
@@ -70,6 +103,8 @@ async function main() {
     if (me.payload?.user?.email !== ADMIN_EMAIL) {
       throw new Error('Authenticated user endpoint returned the wrong account');
     }
+
+    await testPropertyFolderAnalysis(token);
 
     const created = await request('/api/properties', {
       method: 'POST',
@@ -178,7 +213,7 @@ async function main() {
     });
     propertyId = '';
 
-    console.log('Runtime smoke test passed: SPA, health, auth, catalog, admin CRUD, inquiries and stats.');
+    console.log('Runtime smoke test passed: SPA, health, auth, folder import analysis, catalog, admin CRUD, inquiries and stats.');
   } finally {
     if (token && inquiryId) {
       await request(`/api/inquiries/${inquiryId}`, {
