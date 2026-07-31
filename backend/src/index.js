@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth');
 const publicPropertyDetailRoutes = require('./routes/publicPropertyDetail');
 const propertyRoutes = require('./routes/properties');
 const adminPropertyRoutes = require('./routes/adminProperties');
+const propertyImportRoutes = require('./routes/propertyImport');
 const inquiryRoutes = require('./routes/inquiries');
 const statsRoutes = require('./routes/stats');
 
@@ -74,6 +75,7 @@ app.use(express.urlencoded({ extended: true }));
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/properties', adminPropertyRoutes);
+app.use('/api/admin/property-import', propertyImportRoutes);
 app.use('/api/properties', publicPropertyDetailRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/inquiries', inquiryRoutes);
