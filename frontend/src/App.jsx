@@ -15,6 +15,7 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProperties from './pages/admin/AdminProperties';
 import AdminPropertyForm from './pages/admin/AdminPropertyForm';
+import AdminPropertyImporter from './pages/admin/AdminPropertyImporter';
 import AdminInquiries from './pages/admin/AdminInquiries';
 import ProtectedRoute from './components/admin/ProtectedRoute';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -60,6 +61,7 @@ const AppLayout = () => {
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/propiedades" element={<ProtectedRoute><AdminProperties /></ProtectedRoute>} />
         <Route path="/admin/propiedades/nueva" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
+        <Route path="/admin/propiedades/importar" element={<ProtectedRoute><AdminPropertyImporter /></ProtectedRoute>} />
         <Route path="/admin/propiedades/:id/editar" element={<ProtectedRoute><AdminPropertyForm /></ProtectedRoute>} />
         <Route path="/admin/consultas" element={<ProtectedRoute><AdminInquiries /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
