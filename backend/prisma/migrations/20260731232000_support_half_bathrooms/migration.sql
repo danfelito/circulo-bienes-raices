@@ -1,0 +1,3 @@
+ALTER TABLE "properties"
+ALTER COLUMN "bathrooms" TYPE DOUBLE PRECISION
+USING "bathrooms"::DOUBLE PRECISION;
