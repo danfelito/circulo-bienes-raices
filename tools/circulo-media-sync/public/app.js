@@ -132,8 +132,9 @@ const sync = async sourceId => {
   const password = $('#password').value;
   const portalUrl = $('#portalUrl').value.trim();
   if (!email || !password) return notify('Ingresa el correo y la contraseña administrativos.', true);
-  showBusy(`Sincronizando ${sourceId} con Círculo Internacional…`);
+  showBusy(`Preparando y sincronizando ${sourceId} con Círculo Internacional…`);
   try {
+    await api(`/api/properties/${encodeURIComponent(sourceId)}/optimize`, { method: 'POST', body: '{}' });
     const result = await api(`/api/properties/${encodeURIComponent(sourceId)}/sync`, {
       method: 'POST', body: JSON.stringify({ email, password, portalUrl }),
     });
