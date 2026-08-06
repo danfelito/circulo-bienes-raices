@@ -20,33 +20,36 @@ model User {
 }
 
 model Property {
-  id            String    @id @default(cuid())
-  title         String
-  slug          String    @unique
-  description   String    @db.Text
-  operation     String    // venta, renta
-  type          String    // casa, departamento, terreno, oficina, local, bodega, rancho, otros
-  price         Float
-  currency      String    @default("MXN")
-  bedrooms      Int?
-  bathrooms     Float?    // admite medios baños, por ejemplo 2.5
-  area          Float?    // m2 construcción
-  lotArea       Float?    // m2 terreno
-  parking       Int?
-  yearBuilt     Int?
-  city          String
-  state         String    @default("Veracruz")
-  country       String    @default("México")
-  address       String?
-  lat           Float?
-  lng           Float?
-  features      String?   @db.Text // JSON string
-  status        String    @default("available") // available, sold, rented, reserved
-  featured      Boolean   @default(false)
-  published     Boolean   @default(true)
-  views         Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  sourceId        String?   @unique
+  syncSource      String?
+  sourceUpdatedAt DateTime?
+  title           String
+  slug            String    @unique
+  description     String    @db.Text
+  operation       String
+  type            String
+  price           Float
+  currency        String    @default("MXN")
+  bedrooms        Int?
+  bathrooms       Float?
+  area            Float?
+  lotArea         Float?
+  parking         Int?
+  yearBuilt       Int?
+  city            String
+  state           String    @default("Veracruz")
+  country         String    @default("México")
+  address         String?
+  lat             Float?
+  lng             Float?
+  features        String?   @db.Text
+  status          String    @default("available")
+  featured        Boolean   @default(false)
+  published       Boolean   @default(true)
+  views           Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   photos     Photo[]
   inquiries  Inquiry[]
@@ -55,17 +58,27 @@ model Property {
 }
 
 model Photo {
-  id         String   @id @default(cuid())
-  url        String
-  publicId   String?  // Cloudinary public_id; videos use the prefix video:
-  alt        String?
-  order      Int      @default(0)
-  isMain     Boolean  @default(false)
-  propertyId String
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  url            String
+  publicId       String?
+  alt            String?
+  order          Int      @default(0)
+  isMain         Boolean  @default(false)
+  sourceFilename String?
+  checksum       String?
+  originalBytes  Int?
+  optimizedBytes Int?
+  width          Int?
+  height         Int?
+  duration       Float?
+  codec          String?
+  qualityPreset  String?
+  propertyId     String
+  createdAt      DateTime @default(now())
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
+  @@index([propertyId, sourceFilename])
   @@map("photos")
 }
 
@@ -76,7 +89,7 @@ model Inquiry {
   phone      String?
   message    String   @db.Text
   propertyId String?
-  honeypot   String?  // Anti-spam honeypot field
+  honeypot   String?
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
