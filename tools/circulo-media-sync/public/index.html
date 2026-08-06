@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Círculo Media Sync</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">CÍRCULO INTERNACIONAL</p>
+      <h1>Media Sync</h1>
+      <p class="subtitle">Optimiza fotos y videos localmente antes de publicarlos.</p>
+    </div>
+    <div class="server-state"><span class="dot"></span> Aplicación local activa</div>
+  </header>
+
+  <main>
+    <section class="panel setup-panel">
+      <div class="section-title">
+        <div>
+          <h2>Biblioteca local</h2>
+          <p>Selecciona la carpeta principal que contiene una subcarpeta y un README por propiedad.</p>
+        </div>
+        <div class="actions">
+          <button id="selectFolder" class="primary">Seleccionar carpeta</button>
+          <button id="scanFolder" class="secondary">Volver a revisar</button>
+        </div>
+      </div>
+      <div class="folder-row">
+        <span>Carpeta conectada</span>
+        <strong id="rootFolder">Sin seleccionar</strong>
+      </div>
+    </section>
+
+    <section class="panel credentials-panel">
+      <div class="section-title compact">
+        <div>
+          <h2>Conexión con el portal</h2>
+          <p>La contraseña solo se utiliza durante la sincronización y no se guarda.</p>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label>Portal<input id="portalUrl" type="url" value="https://circulo-bienes-raices-2.onrender.com"></label>
+        <label>Correo administrativo<input id="email" type="email" autocomplete="username"></label>
+        <label>Contraseña<input id="password" type="password" autocomplete="current-password"></label>
+      </div>
+    </section>
+
+    <section class="summary-grid" id="summary"></section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Propiedades encontradas</h2>
+          <p id="catalogMessage">Selecciona una carpeta para comenzar.</p>
+        </div>
+      </div>
+      <div id="notice" class="notice hidden"></div>
+      <div id="properties" class="properties"></div>
+    </section>
+  </main>
+
+  <div id="busy" class="busy hidden"><div class="spinner"></div><strong id="busyText">Procesando…</strong><p>No cierres esta ventana durante la compresión o sincronización.</p></div>
+  <script src="/app.js"></script>
+</body>
+</html>
