@@ -8,6 +8,37 @@ cloudinary.config({
   secure: true,
 });
 
+const isMediaSyncOptimizedTransformation = transformation => {
+  if (!Array.isArray(transformation)) return false;
+  return transformation.some(step => (
+    step && typeof step === 'object' &&
+    step.width === 2048 &&
+    step.height === 2048 &&
+    step.crop === 'limit'
+  ));
+};
+
+const sanitizeIncomingTransformation = transformation => {
+  if (!Array.isArray(transformation)) return transformation;
+
+  return transformation
+    .map(step => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) return step;
+      const sanitized = { ...step };
+
+      // f_auto only makes sense at delivery time when a browser sends an Accept header.
+      // Cloudinary explicitly advises against using it as an incoming upload transformation.
+      if (sanitized.fetch_format === 'auto') delete sanitized.fetch_format;
+      if (sanitized.format === 'auto') delete sanitized.format;
+
+      return sanitized;
+    })
+    .filter(step => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) return Boolean(step);
+      return Object.keys(step).length > 0;
+    });
+};
+
 const uploadToCloudinary = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
     const isVideo = options.resource_type === 'video';
@@ -22,12 +53,23 @@ const uploadToCloudinary = (buffer, options = {}) => {
           transformation: [
             { width: 1200, height: 800, crop: 'limit' },
             { quality: 'auto' },
-            { fetch_format: 'auto' },
           ],
         };
 
     const uploadOptions = { ...defaults, ...options };
-    if (uploadOptions.transformation === undefined) delete uploadOptions.transformation;
+
+    // Círculo Media Sync already converts its images locally to optimized WebP at max 2048 px.
+    // Uploading those files with another incoming transformation wastes quota, adds a second
+    // lossy encode and previously included f_auto in the signed upload request.
+    if (!isVideo && isMediaSyncOptimizedTransformation(options.transformation)) {
+      delete uploadOptions.transformation;
+    } else if (uploadOptions.transformation === undefined) {
+      delete uploadOptions.transformation;
+    } else {
+      const sanitized = sanitizeIncomingTransformation(uploadOptions.transformation);
+      if (Array.isArray(sanitized) && sanitized.length === 0) delete uploadOptions.transformation;
+      else uploadOptions.transformation = sanitized;
+    }
 
     const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
       if (error) reject(error);
