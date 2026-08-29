@@ -11,7 +11,7 @@ const ffprobePath = require('ffprobe-static').path;
 const YAML = require('yaml');
 
 const PORT = Number(process.env.CIRCULO_SYNC_PORT || 4317);
-const DEFAULT_PORTAL = 'https://circulo-bienes-raices-2.onrender.com';
+const DEFAULT_PORTAL = 'https://circulointernacionalveracruz.org';
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.heic', '.heif', '.tif', '.tiff']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IGNORED_NAMES = new Set(['thumbs.db', '.ds_store']);
@@ -26,9 +26,11 @@ const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const appDataRoot = process.platform === 'win32'
-  ? path.join(process.env.LOCALAPPDATA || os.homedir(), 'CirculoMediaSync')
-  : path.join(os.homedir(), '.circulo-media-sync');
+const appDataRoot = process.env.CIRCULO_SYNC_DATA_DIR
+  ? path.resolve(process.env.CIRCULO_SYNC_DATA_DIR)
+  : process.platform === 'win32'
+    ? path.join(process.env.LOCALAPPDATA || os.homedir(), 'CirculoMediaSync')
+    : path.join(os.homedir(), '.circulo-media-sync');
 const cacheRoot = path.join(appDataRoot, 'cache');
 const settingsPath = path.join(appDataRoot, 'settings.json');
 
@@ -63,8 +65,30 @@ const sha256File = filePath => new Promise((resolve, reject) => {
   stream.on('end', () => resolve(hash.digest('hex')));
 });
 
+const decodeTextBuffer = buffer => {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return buffer.subarray(2).toString('utf16le');
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    const source = buffer.subarray(2);
+    const swapped = Buffer.alloc(source.length - (source.length % 2));
+    for (let index = 0; index < swapped.length; index += 2) {
+      swapped[index] = source[index + 1];
+      swapped[index + 1] = source[index];
+    }
+    return swapped.toString('utf16le');
+  }
+
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
+  } catch {
+    return new TextDecoder('windows-1252').decode(buffer).replace(/^\uFEFF/, '');
+  }
+};
+
 const parseReadme = async readmePath => {
-  const raw = await fsp.readFile(readmePath, 'utf8');
+  const raw = decodeTextBuffer(await fsp.readFile(readmePath));
   const match = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
   let metadata = {};
   let body = raw.trim();
@@ -162,6 +186,38 @@ const metadataValue = (metadata, ...keys) => {
   return undefined;
 };
 
+const parseFlexibleNumber = value => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value === null || value === undefined || value === '') return null;
+
+  let normalized = String(value).trim().replace(/[^0-9.,+-]/g, '');
+  if (!normalized || !/[0-9]/.test(normalized)) return null;
+
+  const commaIndex = normalized.lastIndexOf(',');
+  const dotIndex = normalized.lastIndexOf('.');
+
+  if (commaIndex !== -1 && dotIndex !== -1) {
+    const decimalSeparator = commaIndex > dotIndex ? ',' : '.';
+    const thousandsSeparator = decimalSeparator === ',' ? '.' : ',';
+    normalized = normalized.split(thousandsSeparator).join('');
+    if (decimalSeparator === ',') normalized = normalized.replace(',', '.');
+  } else {
+    const separator = commaIndex !== -1 ? ',' : dotIndex !== -1 ? '.' : '';
+    if (separator) {
+      const parts = normalized.split(separator);
+      const lastGroup = parts[parts.length - 1];
+      if (parts.length > 2 || lastGroup.length === 3) {
+        normalized = parts.join('');
+      } else if (separator === ',') {
+        normalized = normalized.replace(',', '.');
+      }
+    }
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const draftFromReadme = (property, parsed) => {
   const m = parsed.metadata;
   const statusRaw = String(metadataValue(m, 'status', 'estado') || 'available').toLowerCase();
@@ -176,14 +232,14 @@ const draftFromReadme = (property, parsed) => {
     description: parsed.body || String(metadataValue(m, 'description', 'descripcion', 'descripción') || '').trim(),
     operation: operationRaw.includes('rent') || operationRaw.includes('alquil') ? 'renta' : 'venta',
     type: ['casa', 'departamento', 'terreno', 'oficina', 'local', 'bodega', 'rancho', 'otros'].includes(typeRaw) ? typeRaw : 'otros',
-    price: Number(metadataValue(m, 'price', 'precio')) || null,
+    price: parseFlexibleNumber(metadataValue(m, 'price', 'precio')),
     currency: String(metadataValue(m, 'currency', 'moneda') || 'MXN').toUpperCase(),
-    bedrooms: metadataValue(m, 'bedrooms', 'recamaras', 'recámaras', 'habitaciones') ?? null,
-    bathrooms: metadataValue(m, 'bathrooms', 'banos', 'baños') ?? null,
-    area: metadataValue(m, 'construction_area', 'area', 'construccion', 'construcción') ?? null,
-    lotArea: metadataValue(m, 'land_area', 'lot_area', 'terreno') ?? null,
-    parking: metadataValue(m, 'parking', 'estacionamientos') ?? null,
-    yearBuilt: metadataValue(m, 'year_built', 'ano_construccion', 'año_construcción') ?? null,
+    bedrooms: parseFlexibleNumber(metadataValue(m, 'bedrooms', 'recamaras', 'recámaras', 'habitaciones')),
+    bathrooms: parseFlexibleNumber(metadataValue(m, 'bathrooms', 'banos', 'baños')),
+    area: parseFlexibleNumber(metadataValue(m, 'construction_area', 'area', 'construccion', 'construcción')),
+    lotArea: parseFlexibleNumber(metadataValue(m, 'land_area', 'lot_area', 'terreno')),
+    parking: parseFlexibleNumber(metadataValue(m, 'parking', 'estacionamientos')),
+    yearBuilt: parseFlexibleNumber(metadataValue(m, 'year_built', 'ano_construccion', 'año_construcción')),
     city: String(metadataValue(m, 'city', 'ciudad') || '').trim(),
     state: String(metadataValue(m, 'state', 'estado_region') || 'Veracruz').trim(),
     country: String(metadataValue(m, 'country', 'pais', 'país') || 'México').trim(),
@@ -458,11 +514,17 @@ const selectFolderWindows = () => new Promise((resolve, reject) => {
     '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;',
     '$dialog.Description = "Selecciona la carpeta principal de propiedades";',
     '$dialog.ShowNewFolderButton = $true;',
-    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }',
+    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($dialog.SelectedPath)) }',
   ].join(' ');
   execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { windowsHide: true }, (error, stdout) => {
     if (error) return reject(error);
-    resolve(stdout.trim());
+    const encodedPath = stdout.trim();
+    if (!encodedPath) return resolve('');
+    try {
+      resolve(Buffer.from(encodedPath, 'base64').toString('utf16le'));
+    } catch (decodeError) {
+      reject(new Error(`No se pudo leer la carpeta seleccionada: ${decodeError.message}`));
+    }
   });
 });
 

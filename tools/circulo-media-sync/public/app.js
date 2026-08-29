@@ -86,7 +86,7 @@ const renderProperties = () => {
 
 const render = () => {
   $('#rootFolder').textContent = state.settings.rootFolder || 'Sin seleccionar';
-  $('#portalUrl').value = state.settings.portalUrl || 'https://circulo-bienes-raices-2.onrender.com';
+  $('#portalUrl').value = state.settings.portalUrl || 'https://circulointernacionalveracruz.org';
   if (!$('#email').value) $('#email').value = state.settings.email || '';
   renderSummary();
   renderProperties();

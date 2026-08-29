@@ -13,6 +13,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
+node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)"
+if errorlevel 1 (
+  echo.
+  echo La version instalada de Node.js es demasiado antigua.
+  echo Instala Node.js 20 LTS o superior desde https://nodejs.org/
+  echo.
+  pause
+  exit /b 1
+)
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0cerrar-instancia-anterior.ps1"
+
 call npm install
 if errorlevel 1 (
   echo.
@@ -22,8 +34,15 @@ if errorlevel 1 (
 )
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0crear-acceso-directo.ps1"
+if errorlevel 1 (
+  echo.
+  echo No fue posible crear el acceso directo en el escritorio.
+  pause
+  exit /b 1
+)
 
 echo.
-echo Instalacion terminada. Se creo un acceso directo en el escritorio.
+echo Instalacion terminada.
+echo Se creo el acceso directo "Circulo Media Sync" en el escritorio.
 echo.
-start "" "%~dp0INICIAR_CIRCULO_SYNC_WINDOWS.cmd"
+start "" wscript.exe "%~dp0ABRIR_CIRCULO_SYNC_WINDOWS.vbs"

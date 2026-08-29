@@ -1,12 +1,50 @@
 const cloudinary = require('cloudinary').v2;
 const streamifier = require('streamifier');
 
+const normalizeCredential = value => {
+  const trimmed = String(value || '').trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1).trim();
+    }
+  }
+  return trimmed;
+};
+
+const cloudinaryCredentials = {
+  cloud_name: normalizeCredential(process.env.CLOUDINARY_CLOUD_NAME),
+  api_key: normalizeCredential(process.env.CLOUDINARY_API_KEY),
+  api_secret: normalizeCredential(process.env.CLOUDINARY_API_SECRET),
+};
+
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  ...cloudinaryCredentials,
   secure: true,
 });
+
+const assertCloudinaryConfiguration = () => {
+  const missing = Object.entries(cloudinaryCredentials)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length) {
+    throw Object.assign(
+      new Error(`Configuración de Cloudinary incompleta: faltan ${missing.join(', ')}`),
+      { statusCode: 503, code: 'CLOUDINARY_CONFIG_MISSING' },
+    );
+  }
+};
+
+const normalizeCloudinaryError = error => {
+  if (!/invalid signature/i.test(String(error?.message || ''))) return error;
+
+  return Object.assign(
+    new Error('Cloudinary rechazó la firma. Verifica en Render que CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET pertenezcan al mismo Product Environment y no contengan comillas ni espacios adicionales.'),
+    { statusCode: 502, code: 'CLOUDINARY_INVALID_SIGNATURE' },
+  );
+};
 
 const isMediaSyncOptimizedTransformation = transformation => {
   if (!Array.isArray(transformation)) return false;
@@ -41,6 +79,13 @@ const sanitizeIncomingTransformation = transformation => {
 
 const uploadToCloudinary = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
+    try {
+      assertCloudinaryConfiguration();
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
     const isVideo = options.resource_type === 'video';
     const defaults = isVideo
       ? {
@@ -72,7 +117,7 @@ const uploadToCloudinary = (buffer, options = {}) => {
     }
 
     const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-      if (error) reject(error);
+      if (error) reject(normalizeCloudinaryError(error));
       else resolve(result);
     });
 

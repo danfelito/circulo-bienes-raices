@@ -13,6 +13,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)"
+if errorlevel 1 (
+  echo.
+  echo La version instalada de Node.js es demasiado antigua.
+  echo Instala Node.js 20 LTS o superior desde https://nodejs.org/
+  echo.
+  pause
+  exit /b 1
+)
+
 if not exist "node_modules\sharp" (
   echo Instalando componentes de Circulo Media Sync...
   call npm install

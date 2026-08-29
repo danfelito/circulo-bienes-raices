@@ -1,6 +1,6 @@
-# Círculo Media Sync
+# Círculo Media Sync para Windows
 
-Aplicación local para Windows que conserva los originales en la computadora, genera copias optimizadas de fotografías y videos, y sincroniza las propiedades con `https://circulo-bienes-raices-2.onrender.com/propiedades`.
+Aplicación local para Windows que conserva los originales en la computadora, genera copias optimizadas de fotografías y videos, y sincroniza las propiedades con `https://circulointernacionalveracruz.org/propiedades`.
 
 ## Instalación en Windows
 
@@ -9,6 +9,20 @@ Aplicación local para Windows que conserva los originales en la computadora, ge
 3. Utilizar el acceso directo **Círculo Media Sync** creado en el escritorio.
 
 La aplicación abre una interfaz local en `http://127.0.0.1:4317`. Ningún archivo se publica hasta presionar **Sincronizar con portal**.
+
+## Acceso directo del escritorio
+
+La versión 0.2.1 crea un acceso directo con el icono de Círculo Internacional. Al abrirlo:
+
+- Media Sync se inicia en segundo plano, sin dejar una consola abierta.
+- La interfaz se abre automáticamente en el navegador.
+- Si Media Sync ya está activo, el acceso directo vuelve a abrir la interfaz sin iniciar una segunda copia.
+
+Para reconstruir el acceso directo después de mover la carpeta del programa, vuelve a ejecutar `INSTALAR_CIRCULO_SYNC_WINDOWS.cmd`.
+
+Al actualizar desde una versión anterior, el instalador verifica si Círculo Media Sync está utilizando el puerto local 4317 y cierra únicamente esa instancia antes de abrir la nueva versión.
+
+Los nombres de carpetas y archivos pueden escribirse completamente en español, incluyendo `ñ` y letras acentuadas. Los archivos `README.md` y `README.txt` se aceptan en UTF-8, UTF-8 con BOM, UTF-16 y Windows-1252.
 
 ## Estructura de carpetas
 

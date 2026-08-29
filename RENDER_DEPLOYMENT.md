@@ -2,7 +2,7 @@
 
 El servicio productivo esperado es:
 
-- **Nombre:** `circulo-bienes-raices-1`
+- **Nombre:** `circulo-bienes-raices-2`
 - **Tipo:** Web Service
 - **Runtime:** Docker
 - **Repositorio:** `danfelito/circulo-bienes-raices`
@@ -37,7 +37,18 @@ Al iniciar, el contenedor ejecuta:
 | `CLOUDINARY_CLOUD_NAME` | Cuenta para fotografías |
 | `CLOUDINARY_API_KEY` | Credencial para fotografías |
 | `CLOUDINARY_API_SECRET` | Secreto para fotografías |
-| `CORS_ORIGIN` | `https://circulo-bienes-raices-1.onrender.com` |
+| `CORS_ORIGIN` | `https://circulointernacionalveracruz.org,https://www.circulointernacionalveracruz.org,https://circulo-bienes-raices-2.onrender.com` |
+
+Las tres variables de Cloudinary deben copiarse desde el mismo **Product Environment**. No deben incluir comillas ni espacios antes o después del valor. El secreto nunca se guarda en GitHub ni se introduce en Media Sync.
+
+### Error `Invalid Signature`
+
+Si Cloudinary muestra `Invalid Signature` y la cadena contiene solamente `folder` y `timestamp`, el backend ya está enviando los parámetros correctos. La causa es una combinación incompatible de `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET`, normalmente por un secreto rotado, una clave de otro Product Environment o caracteres adicionales al copiar el valor.
+
+1. Abrir Cloudinary → **Settings → API Keys** y seleccionar el Product Environment utilizado por el portal.
+2. En Render → `circulo-bienes-raices-2` → **Environment**, reemplazar las tres variables con los valores de ese mismo entorno.
+3. Guardar los cambios y ejecutar **Manual Deploy → Deploy latest commit**.
+4. Volver a sincronizar una sola fotografía de prueba antes de cargar el resto de la propiedad.
 
 ## Variables públicas de contacto
 
@@ -51,7 +62,7 @@ Al iniciar, el contenedor ejecuta:
 ## Despliegue
 
 1. Fusionar el PR aprobado en `main`.
-2. En Render, abrir `circulo-bienes-raices-1`.
+2. En Render, abrir `circulo-bienes-raices-2`.
 3. Confirmar que el servicio sea Docker y apunte al repositorio y rama indicados.
 4. Guardar todas las variables.
 5. Ejecutar **Manual Deploy → Deploy latest commit**.
@@ -71,4 +82,4 @@ El endpoint `/api/properties` nunca debe responder HTML. Si devuelve la página 
 
 ## Servicio duplicado
 
-Después de validar `circulo-bienes-raices-1`, suspender o eliminar cualquier servicio antiguo que apunte al mismo dominio o repositorio. No eliminar la base PostgreSQL usada por el servicio validado.
+Después de validar `circulo-bienes-raices-2`, suspender o eliminar cualquier servicio antiguo que apunte al mismo dominio o repositorio. No eliminar la base PostgreSQL usada por el servicio validado.

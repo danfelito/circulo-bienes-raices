@@ -25,8 +25,29 @@ const upload = multer({
 const isVideo = file => file?.mimetype?.startsWith('video/') || /\.(mp4|mov|m4v|webm)(?:$|\?)/i.test(file?.originalname || '');
 const baseName = value => path.basename(String(value || '').replace(/\\/g, '/'));
 const nullableNumber = value => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
+
+  let normalized = String(value).trim().replace(/[^0-9.,+-]/g, '');
+  if (!normalized || !/[0-9]/.test(normalized)) return null;
+
+  const commaIndex = normalized.lastIndexOf(',');
+  const dotIndex = normalized.lastIndexOf('.');
+  if (commaIndex !== -1 && dotIndex !== -1) {
+    const decimalSeparator = commaIndex > dotIndex ? ',' : '.';
+    normalized = normalized.split(decimalSeparator === ',' ? '.' : ',').join('');
+    if (decimalSeparator === ',') normalized = normalized.replace(',', '.');
+  } else {
+    const separator = commaIndex !== -1 ? ',' : dotIndex !== -1 ? '.' : '';
+    if (separator) {
+      const parts = normalized.split(separator);
+      const lastGroup = parts[parts.length - 1];
+      if (parts.length > 2 || lastGroup.length === 3) normalized = parts.join('');
+      else if (separator === ',') normalized = normalized.replace(',', '.');
+    }
+  }
+
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 };
 const nullableInteger = value => {

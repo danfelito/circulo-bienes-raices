@@ -1,6 +1,6 @@
 {
   "name": "circulo-media-sync",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Optimizador local y sincronizador de propiedades para Círculo Internacional",
   "main": "server.js",
