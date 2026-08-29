@@ -1,0 +1,18 @@
+{
+  "name": "circulo-bienes-raices-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "cf:dev": "npm run build && wrangler dev",
+    "cf:deploy": "npm run build && wrangler deploy",
+    "cf:types": "wrangler types cloudflare/worker-configuration.d.ts",
+    "d1:local": "wrangler d1 migrations apply circulo-bienes-raices-db --local",
+    "d1:remote": "wrangler d1 migrations apply circulo-bienes-raices-db --remote",
+    "check": "node --check cloudflare/src/index.mjs && node cloudflare/tests/worker-smoke.mjs && npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "wrangler": "^4.44.0"
+  }
+}

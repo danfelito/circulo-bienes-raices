@@ -144,16 +144,68 @@ const api = {
   },
 
   uploadPhotos: async (propertyId, files) => {
-    const formData = new FormData();
-    files.forEach(file => formData.append('photos', file));
-    const res = await fetch(`${API_BASE}/properties/${propertyId}/photos`, {
+    const signedRes = await fetch(`${API_BASE}/admin/uploads/sign`, {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
-      body: formData,
+      body: JSON.stringify({ propertyId }),
     });
-    if (!res.ok) throw new Error(await readError(res, 'Error al subir archivos multimedia'));
-    return res.json();
+
+    // Compatibilidad temporal con el backend anterior de Render.
+    if (signedRes.status === 404) {
+      const legacyForm = new FormData();
+      files.forEach(file => legacyForm.append('photos', file));
+      const legacyRes = await fetch(`${API_BASE}/properties/${propertyId}/photos`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() },
+        credentials: 'include',
+        body: legacyForm,
+      });
+      if (!legacyRes.ok) throw new Error(await readError(legacyRes, 'Error al subir archivos multimedia'));
+      return legacyRes.json();
+    }
+
+    if (!signedRes.ok) throw new Error(await readError(signedRes, 'No se pudo preparar la carga multimedia'));
+    const signed = await signedRes.json();
+    const uploaded = [];
+
+    for (const file of files) {
+      const cloudinaryForm = new FormData();
+      cloudinaryForm.append('file', file, file.name);
+      cloudinaryForm.append('api_key', signed.apiKey);
+      cloudinaryForm.append('timestamp', String(signed.timestamp));
+      cloudinaryForm.append('folder', signed.folder);
+      cloudinaryForm.append('signature', signed.signature);
+
+      const cloudinaryRes = await fetch(signed.uploadUrl, { method: 'POST', body: cloudinaryForm });
+      const cloudinary = await cloudinaryRes.json().catch(() => ({}));
+      if (!cloudinaryRes.ok || !cloudinary.secure_url || !cloudinary.public_id) {
+        throw new Error(cloudinary.error?.message || `No se pudo subir ${file.name}`);
+      }
+
+      const completeRes = await fetch(`${API_BASE}/admin/uploads/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify({
+          propertyId,
+          secureUrl: cloudinary.secure_url,
+          publicId: cloudinary.public_id,
+          resourceType: cloudinary.resource_type,
+          sourceFilename: file.name,
+          originalBytes: file.size,
+          optimizedBytes: cloudinary.bytes,
+          width: cloudinary.width,
+          height: cloudinary.height,
+          duration: cloudinary.duration,
+          format: cloudinary.format,
+        }),
+      });
+      if (!completeRes.ok) throw new Error(await readError(completeRes, `No se pudo registrar ${file.name}`));
+      uploaded.push(await completeRes.json());
+    }
+
+    return uploaded;
   },
 
   deletePhoto: async (propertyId, photoId) => {

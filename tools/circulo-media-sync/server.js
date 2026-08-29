@@ -452,19 +452,97 @@ const loginPortal = async (portalUrl, email, password) => {
   return payload.token;
 };
 
-const syncProperty = async (sourceId, credentials) => {
-  const property = catalog.find(item => item.sourceId === sourceId);
-  if (!property) throw new Error('Propiedad no encontrada');
-  let manifest = await loadManifest(sourceId);
-  if (!manifest) {
-    await optimizeProperty(sourceId);
-    manifest = await loadManifest(sourceId);
-  }
-  const portalUrl = String(credentials.portalUrl || settings.portalUrl || DEFAULT_PORTAL).replace(/\/$/, '');
-  const token = await loginPortal(portalUrl, credentials.email, credentials.password);
-  const lastSynced = manifest.lastSyncedChecksums || {};
-  const changedFiles = manifest.files.filter(file => lastSynced[file.sourceFilename] !== file.checksum);
+const remotePropertyState = async (portalUrl, token, sourceId) => {
+  const response = await fetch(`${portalUrl}/api/admin/property-sync/${encodeURIComponent(sourceId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 404) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'No se pudo consultar el estado remoto de la propiedad');
+  return payload;
+};
 
+const requestCloudinaryUploadSignature = async (portalUrl, token, sourceId) => {
+  const response = await fetch(`${portalUrl}/api/admin/property-sync/sign-upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sourceId }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(payload.error || 'No se pudo preparar la carga directa a Cloudinary');
+  return payload;
+};
+
+const uploadOptimizedFileDirectly = async (file, signedUpload) => {
+  const buffer = await fsp.readFile(file.optimizedPath);
+  const type = file.category === 'video' ? 'video/mp4' : 'image/webp';
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type }), file.uploadName);
+  form.append('api_key', String(signedUpload.apiKey));
+  form.append('timestamp', String(signedUpload.timestamp));
+  form.append('folder', String(signedUpload.folder));
+  form.append('signature', String(signedUpload.signature));
+
+  const response = await fetch(signedUpload.uploadUrl, { method: 'POST', body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.secure_url || !payload.public_id) {
+    throw new Error(payload.error?.message || `Cloudinary no pudo cargar ${file.sourceFilename}`);
+  }
+
+  return {
+    sourceFilename: file.sourceFilename,
+    checksum: file.checksum,
+    originalBytes: file.originalBytes,
+    optimizedBytes: file.optimizedBytes,
+    width: payload.width || file.width,
+    height: payload.height || file.height,
+    duration: payload.duration || file.duration,
+    codec: file.codec,
+    qualityPreset: file.qualityPreset,
+    resourceType: payload.resource_type || file.category,
+    secureUrl: payload.secure_url,
+    publicId: payload.public_id,
+    bytes: payload.bytes,
+    format: payload.format,
+  };
+};
+
+const syncPropertyDirectly = async ({ portalUrl, token, sourceId, manifest, changedFiles, signedUpload }) => {
+  const assets = [];
+  for (const file of changedFiles) assets.push(await uploadOptimizedFileDirectly(file, signedUpload));
+
+  const response = await fetch(`${portalUrl}/api/admin/property-sync/sync/upsert`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sourceId,
+      draft: { ...manifest.draft, mediaOrder: manifest.mediaOrder },
+      manifest: {
+        files: manifest.files.map(file => ({
+          sourceFilename: file.sourceFilename,
+          checksum: file.checksum,
+          originalBytes: file.originalBytes,
+          optimizedBytes: file.optimizedBytes,
+          width: file.width,
+          height: file.height,
+          duration: file.duration,
+          codec: file.codec,
+          qualityPreset: file.qualityPreset,
+          category: file.category,
+        })),
+        removedFilenames: manifest.removedFilenames || [],
+        mediaOrder: manifest.mediaOrder || [],
+      },
+      assets,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'No se pudo registrar la propiedad en D1');
+  return payload;
+};
+
+const syncPropertyLegacy = async ({ portalUrl, token, sourceId, manifest, changedFiles }) => {
   const form = new FormData();
   form.append('sourceId', sourceId);
   form.append('draft', JSON.stringify({ ...manifest.draft, mediaOrder: manifest.mediaOrder }));
@@ -497,6 +575,31 @@ const syncProperty = async (sourceId, credentials) => {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || 'No se pudo sincronizar la propiedad');
+  return payload;
+};
+
+const syncProperty = async (sourceId, credentials) => {
+  const property = catalog.find(item => item.sourceId === sourceId);
+  if (!property) throw new Error('Propiedad no encontrada');
+  let manifest = await loadManifest(sourceId);
+  if (!manifest) {
+    await optimizeProperty(sourceId);
+    manifest = await loadManifest(sourceId);
+  }
+  const portalUrl = String(credentials.portalUrl || settings.portalUrl || DEFAULT_PORTAL).replace(/\/$/, '');
+  const token = await loginPortal(portalUrl, credentials.email, credentials.password);
+  const remote = await remotePropertyState(portalUrl, token, sourceId).catch(() => null);
+  const remoteChecksums = new Map((remote?.photos || []).filter(file => file.sourceFilename).map(file => [file.sourceFilename, file.checksum]));
+  const lastSynced = manifest.lastSyncedChecksums || {};
+  const signedUpload = await requestCloudinaryUploadSignature(portalUrl, token, sourceId);
+  const changedFiles = remote
+    ? manifest.files.filter(file => remoteChecksums.get(file.sourceFilename) !== file.checksum)
+    : signedUpload
+      ? manifest.files
+      : manifest.files.filter(file => lastSynced[file.sourceFilename] !== file.checksum);
+  const payload = signedUpload
+    ? await syncPropertyDirectly({ portalUrl, token, sourceId, manifest, changedFiles, signedUpload })
+    : await syncPropertyLegacy({ portalUrl, token, sourceId, manifest, changedFiles });
 
   manifest.lastSyncedChecksums = Object.fromEntries(manifest.files.map(file => [file.sourceFilename, file.checksum]));
   manifest.removedFilenames = [];
