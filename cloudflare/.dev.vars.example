@@ -4,5 +4,6 @@ ADMIN_PASSWORD=replace-with-a-strong-password
 CLOUDINARY_CLOUD_NAME=replace-with-cloud-name
 CLOUDINARY_API_KEY=replace-with-api-key
 CLOUDINARY_API_SECRET=replace-with-api-secret
+CORS_ORIGIN=http://127.0.0.1:8787
 OPENAI_API_KEY=replace-with-openai-key
 OPENAI_PROPERTY_MODEL=gpt-5

@@ -25,6 +25,7 @@
   ],
   "vars": {
     "NODE_ENV": "production",
+    "CORS_ORIGIN": "",
     "CONTACT_EMAIL": "",
     "CONTACT_PHONE": "",
     "WHATSAPP_NUMBER": "",

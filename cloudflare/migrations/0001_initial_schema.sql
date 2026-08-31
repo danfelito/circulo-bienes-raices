@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS properties (
   featured INTEGER NOT NULL DEFAULT 0 CHECK (featured IN (0, 1)),
   published INTEGER NOT NULL DEFAULT 1 CHECK (published IN (0, 1)),
   views INTEGER NOT NULL DEFAULT 0,
+  citySearch TEXT NOT NULL,
+  searchText TEXT NOT NULL,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -77,6 +79,13 @@ CREATE TABLE IF NOT EXISTS inquiries (
   FOREIGN KEY (propertyId) REFERENCES properties(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+  attemptKey TEXT PRIMARY KEY NOT NULL,
+  failures INTEGER NOT NULL DEFAULT 0,
+  firstAttemptAt INTEGER NOT NULL,
+  lockedUntil INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS properties_catalog_idx
   ON properties (published, featured, createdAt DESC);
 CREATE INDEX IF NOT EXISTS properties_location_idx
@@ -85,5 +94,11 @@ CREATE INDEX IF NOT EXISTS photos_property_order_idx
   ON photos (propertyId, "order");
 CREATE INDEX IF NOT EXISTS photos_source_idx
   ON photos (propertyId, sourceFilename);
+CREATE UNIQUE INDEX IF NOT EXISTS photos_property_source_unique_idx
+  ON photos (propertyId, sourceFilename);
+CREATE UNIQUE INDEX IF NOT EXISTS photos_public_id_unique_idx
+  ON photos (publicId) WHERE publicId IS NOT NULL;
+CREATE INDEX IF NOT EXISTS properties_search_idx
+  ON properties (citySearch, searchText);
 CREATE INDEX IF NOT EXISTS inquiries_created_idx
   ON inquiries (createdAt DESC);

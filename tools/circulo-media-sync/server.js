@@ -9,19 +9,20 @@ const sharp = require('sharp');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const YAML = require('yaml');
+const {
+  STATUS_MAP,
+  decodeTextBuffer,
+  draftFromReadme,
+  foldText,
+  metadataValue,
+  parseLocalizedBoolean,
+} = require('./metadata');
 
 const PORT = Number(process.env.CIRCULO_SYNC_PORT || 4317);
 const DEFAULT_PORTAL = 'https://circulointernacionalveracruz.org';
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.heic', '.heif', '.tif', '.tiff']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IGNORED_NAMES = new Set(['thumbs.db', '.ds_store']);
-const STATUS_MAP = new Map([
-  ['available', 'available'], ['disponible', 'available'],
-  ['reserved', 'reserved'], ['reservada', 'reserved'], ['reservado', 'reserved'],
-  ['sold', 'sold'], ['vendida', 'sold'], ['vendido', 'sold'],
-  ['rented', 'rented'], ['rentada', 'rented'], ['rentado', 'rented'],
-]);
-
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -64,28 +65,6 @@ const sha256File = filePath => new Promise((resolve, reject) => {
   stream.on('data', chunk => hash.update(chunk));
   stream.on('end', () => resolve(hash.digest('hex')));
 });
-
-const decodeTextBuffer = buffer => {
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-    return buffer.subarray(2).toString('utf16le');
-  }
-
-  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    const source = buffer.subarray(2);
-    const swapped = Buffer.alloc(source.length - (source.length % 2));
-    for (let index = 0; index < swapped.length; index += 2) {
-      swapped[index] = source[index + 1];
-      swapped[index + 1] = source[index];
-    }
-    return swapped.toString('utf16le');
-  }
-
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
-  } catch {
-    return new TextDecoder('windows-1252').decode(buffer).replace(/^\uFEFF/, '');
-  }
-};
 
 const parseReadme = async readmePath => {
   const raw = decodeTextBuffer(await fsp.readFile(readmePath));
@@ -176,82 +155,6 @@ const mediaMetadata = async file => {
     duration: Number(probe.format?.duration) || null,
     bitrate: Number(probe.format?.bit_rate) || null,
     fps: video.avg_frame_rate || null,
-  };
-};
-
-const metadataValue = (metadata, ...keys) => {
-  for (const key of keys) {
-    if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '') return metadata[key];
-  }
-  return undefined;
-};
-
-const parseFlexibleNumber = value => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (value === null || value === undefined || value === '') return null;
-
-  let normalized = String(value).trim().replace(/[^0-9.,+-]/g, '');
-  if (!normalized || !/[0-9]/.test(normalized)) return null;
-
-  const commaIndex = normalized.lastIndexOf(',');
-  const dotIndex = normalized.lastIndexOf('.');
-
-  if (commaIndex !== -1 && dotIndex !== -1) {
-    const decimalSeparator = commaIndex > dotIndex ? ',' : '.';
-    const thousandsSeparator = decimalSeparator === ',' ? '.' : ',';
-    normalized = normalized.split(thousandsSeparator).join('');
-    if (decimalSeparator === ',') normalized = normalized.replace(',', '.');
-  } else {
-    const separator = commaIndex !== -1 ? ',' : dotIndex !== -1 ? '.' : '';
-    if (separator) {
-      const parts = normalized.split(separator);
-      const lastGroup = parts[parts.length - 1];
-      if (parts.length > 2 || lastGroup.length === 3) {
-        normalized = parts.join('');
-      } else if (separator === ',') {
-        normalized = normalized.replace(',', '.');
-      }
-    }
-  }
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const draftFromReadme = (property, parsed) => {
-  const m = parsed.metadata;
-  const statusRaw = String(metadataValue(m, 'status', 'estado') || 'available').toLowerCase();
-  const operationRaw = String(metadataValue(m, 'operation', 'operacion', 'operación') || 'venta').toLowerCase();
-  const typeRaw = String(metadataValue(m, 'type', 'tipo') || 'otros').toLowerCase();
-  const publishedValue = metadataValue(m, 'published', 'publicada', 'publicado');
-  const featuredValue = metadataValue(m, 'featured', 'destacada', 'destacado');
-  const cover = normalizeSlashes(metadataValue(m, 'cover', 'portada', 'main_photo') || '');
-
-  return {
-    title: String(metadataValue(m, 'title', 'titulo', 'título') || property.folderName).trim(),
-    description: parsed.body || String(metadataValue(m, 'description', 'descripcion', 'descripción') || '').trim(),
-    operation: operationRaw.includes('rent') || operationRaw.includes('alquil') ? 'renta' : 'venta',
-    type: ['casa', 'departamento', 'terreno', 'oficina', 'local', 'bodega', 'rancho', 'otros'].includes(typeRaw) ? typeRaw : 'otros',
-    price: parseFlexibleNumber(metadataValue(m, 'price', 'precio')),
-    currency: String(metadataValue(m, 'currency', 'moneda') || 'MXN').toUpperCase(),
-    bedrooms: parseFlexibleNumber(metadataValue(m, 'bedrooms', 'recamaras', 'recámaras', 'habitaciones')),
-    bathrooms: parseFlexibleNumber(metadataValue(m, 'bathrooms', 'banos', 'baños')),
-    area: parseFlexibleNumber(metadataValue(m, 'construction_area', 'area', 'construccion', 'construcción')),
-    lotArea: parseFlexibleNumber(metadataValue(m, 'land_area', 'lot_area', 'terreno')),
-    parking: parseFlexibleNumber(metadataValue(m, 'parking', 'estacionamientos')),
-    yearBuilt: parseFlexibleNumber(metadataValue(m, 'year_built', 'ano_construccion', 'año_construcción')),
-    city: String(metadataValue(m, 'city', 'ciudad') || '').trim(),
-    state: String(metadataValue(m, 'state', 'estado_region') || 'Veracruz').trim(),
-    country: String(metadataValue(m, 'country', 'pais', 'país') || 'México').trim(),
-    address: String(metadataValue(m, 'address', 'direccion', 'dirección') || '').trim(),
-    lat: metadataValue(m, 'lat', 'latitude', 'latitud') ?? null,
-    lng: metadataValue(m, 'lng', 'longitude', 'longitud') ?? null,
-    features: parsed.features,
-    status: STATUS_MAP.get(statusRaw) || 'available',
-    featured: featuredValue === true || String(featuredValue).toLowerCase() === 'true',
-    published: publishedValue === undefined ? true : publishedValue === true || String(publishedValue).toLowerCase() === 'true',
-    mainPhotoFilename: cover,
-    updatedAt: String(metadataValue(m, 'updated_at', 'actualizada', 'actualizado') || new Date().toISOString()),
   };
 };
 
@@ -503,6 +406,8 @@ const uploadOptimizedFileDirectly = async (file, signedUpload) => {
     resourceType: payload.resource_type || file.category,
     secureUrl: payload.secure_url,
     publicId: payload.public_id,
+    version: payload.version,
+    signature: payload.signature,
     bytes: payload.bytes,
     format: payload.format,
   };
@@ -588,7 +493,7 @@ const syncProperty = async (sourceId, credentials) => {
   }
   const portalUrl = String(credentials.portalUrl || settings.portalUrl || DEFAULT_PORTAL).replace(/\/$/, '');
   const token = await loginPortal(portalUrl, credentials.email, credentials.password);
-  const remote = await remotePropertyState(portalUrl, token, sourceId).catch(() => null);
+  const remote = await remotePropertyState(portalUrl, token, sourceId);
   const remoteChecksums = new Map((remote?.photos || []).filter(file => file.sourceFilename).map(file => [file.sourceFilename, file.checksum]));
   const lastSynced = manifest.lastSyncedChecksums || {};
   const signedUpload = await requestCloudinaryUploadSignature(portalUrl, token, sourceId);
@@ -689,9 +594,14 @@ app.patch('/api/properties/:sourceId/status', async (req, res) => {
     const property = catalog.find(item => item.sourceId === req.params.sourceId);
     if (!property) return res.status(404).json({ error: 'Propiedad no encontrada' });
     const parsed = await parseReadme(property.readmePath);
-    const status = STATUS_MAP.get(String(req.body.status || '').toLowerCase());
+    const status = STATUS_MAP.get(foldText(req.body.status));
     if (!status) return res.status(400).json({ error: 'Estado no válido' });
-    const metadata = { ...parsed.metadata, status, published: req.body.published !== false, updated_at: new Date().toISOString() };
+    const metadata = {
+      ...parsed.metadata,
+      status,
+      published: parseLocalizedBoolean(req.body.published, true),
+      updated_at: new Date().toISOString(),
+    };
     await writeReadmeMetadata(property.readmePath, metadata, parsed.body);
     await scanCatalog();
     res.json({ status, published: metadata.published });

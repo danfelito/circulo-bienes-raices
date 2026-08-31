@@ -191,6 +191,8 @@ const api = {
           propertyId,
           secureUrl: cloudinary.secure_url,
           publicId: cloudinary.public_id,
+          version: cloudinary.version,
+          signature: cloudinary.signature,
           resourceType: cloudinary.resource_type,
           sourceFilename: file.name,
           originalBytes: file.size,
