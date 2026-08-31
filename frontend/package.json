@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zip.js/zip.js": "^2.8.61",
     "framer-motion": "^11.11.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",

@@ -1,3 +1,5 @@
+import { categoryOf, relativeName, retry } from '../lib/propertyImport';
+
 const API_BASE = '/api';
 
 const getAuthHeaders = () => {
@@ -12,13 +14,6 @@ const readError = async (res, fallback) => {
   } catch {
     return fallback;
   }
-};
-
-const appendFiles = (formData, files) => {
-  files.forEach(file => {
-    const relativePath = file.webkitRelativePath || file.relativePath || file.name;
-    formData.append('files', file, relativePath);
-  });
 };
 
 const api = {
@@ -148,7 +143,7 @@ const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
-      body: JSON.stringify({ propertyId }),
+      body: JSON.stringify({ propertyId, expectedFiles: files.map(file => file.name), maxFiles: files.length }),
     });
 
     // Compatibilidad temporal con el backend anterior de Render.
@@ -170,12 +165,15 @@ const api = {
     const uploaded = [];
 
     for (const file of files) {
+      const upload = signed.uploads?.find(item => item.sourceFilename === file.name);
+      if (!upload) throw new Error(`La sesión no autorizó ${file.name}`);
       const cloudinaryForm = new FormData();
       cloudinaryForm.append('file', file, file.name);
       cloudinaryForm.append('api_key', signed.apiKey);
       cloudinaryForm.append('timestamp', String(signed.timestamp));
       cloudinaryForm.append('folder', signed.folder);
-      cloudinaryForm.append('signature', signed.signature);
+      cloudinaryForm.append('public_id', upload.publicId);
+      cloudinaryForm.append('signature', upload.signature);
 
       const cloudinaryRes = await fetch(signed.uploadUrl, { method: 'POST', body: cloudinaryForm });
       const cloudinary = await cloudinaryRes.json().catch(() => ({}));
@@ -189,6 +187,7 @@ const api = {
         credentials: 'include',
         body: JSON.stringify({
           propertyId,
+          uploadSessionId: signed.uploadSessionId,
           secureUrl: cloudinary.secure_url,
           publicId: cloudinary.public_id,
           version: cloudinary.version,
@@ -230,31 +229,89 @@ const api = {
     return res.json();
   },
 
-  analyzePropertyFolder: async files => {
-    const formData = new FormData();
-    appendFiles(formData, files);
+  analyzePropertyInventory: async (inventory, documents, signal) => {
     const res = await fetch(`${API_BASE}/admin/property-import/analyze`, {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
-      body: formData,
+      signal,
+      body: JSON.stringify({ inventory, documents }),
     });
     if (!res.ok) throw new Error(await readError(res, 'No se pudo analizar la carpeta'));
     return res.json();
   },
 
-  publishPropertyFolder: async (draft, files) => {
-    const formData = new FormData();
-    formData.append('draft', JSON.stringify(draft));
-    appendFiles(formData, files);
-    const res = await fetch(`${API_BASE}/admin/property-import/publish`, {
+  importProperty: async (draft, files, inventory, { signal, onProgress = () => {}, onRetry = () => {} } = {}) => {
+    const startRes = await fetch(`${API_BASE}/admin/property-import/start`, {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       credentials: 'include',
-      body: formData,
+      signal,
+      body: JSON.stringify({ inventory }),
     });
-    if (!res.ok) throw new Error(await readError(res, 'No se pudo publicar la propiedad'));
-    return res.json();
+    if (!startRes.ok) throw new Error(await readError(startRes, 'No se pudo iniciar la importación'));
+    const session = await startRes.json();
+    const mediaInventory = inventory.files.filter(item => ['image', 'video'].includes(item.category));
+    const filesByPath = new Map(files.map(file => [relativeName(file), file]));
+    const assets = [];
+    const cancel = async () => {
+      await fetch(`${API_BASE}/admin/property-import/cancel`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include',
+        body: JSON.stringify({ importId: session.importId, uploadSessionId: session.signed.uploadSessionId,
+          files: mediaInventory.map(item => ({ sourceFilename: item.path, resourceType: item.category })) }),
+      }).catch(() => {});
+    };
+    try {
+      for (const [index, item] of mediaInventory.entries()) {
+        const file = filesByPath.get(item.path);
+        const authorization = session.signed.uploads.find(upload => upload.sourceFilename === item.path);
+        if (!file || !authorization) throw new Error(`No se encontró el archivo autorizado ${item.path}`);
+        const cloudinary = await retry(async attempt => {
+          onProgress({ phase: 'uploading', completed: index, total: mediaInventory.length, current: item.path, attempt });
+          const form = new FormData();
+          form.append('file', file, file.name);
+          form.append('api_key', session.signed.apiKey);
+          form.append('timestamp', String(session.signed.timestamp));
+          form.append('folder', session.signed.folder);
+          form.append('public_id', authorization.publicId);
+          form.append('signature', authorization.signature);
+          const response = await fetch(session.signed.uploadUrl, { method: 'POST', body: form, signal });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.secure_url || !payload.public_id || !payload.signature) {
+            throw new Error(payload.error?.message || `Cloudinary no pudo cargar ${item.path}`);
+          }
+          return payload;
+        }, { signal, onRetry: event => onRetry({ ...event, file: item.path }) });
+        assets.push({
+          uploadSessionId: session.signed.uploadSessionId,
+          sourceFilename: item.path,
+          resourceType: cloudinary.resource_type || item.category,
+          secureUrl: cloudinary.secure_url,
+          publicId: cloudinary.public_id,
+          version: cloudinary.version,
+          signature: cloudinary.signature,
+          originalBytes: file.size,
+          optimizedBytes: cloudinary.bytes,
+          width: cloudinary.width,
+          height: cloudinary.height,
+          duration: cloudinary.duration,
+          format: cloudinary.format,
+        });
+        onProgress({ phase: 'uploading', completed: index + 1, total: mediaInventory.length, current: item.path });
+      }
+      onProgress({ phase: 'registering', completed: mediaInventory.length, total: mediaInventory.length });
+      return await retry(async () => {
+        const completeRes = await fetch(`${API_BASE}/admin/property-import/complete`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include', signal,
+          body: JSON.stringify({ importId: session.importId, draft, assets }),
+        });
+        if (!completeRes.ok) throw new Error(await readError(completeRes, 'No se pudo registrar la propiedad en D1'));
+        return completeRes.json();
+      }, { signal, onRetry: event => onRetry({ ...event, file: 'registro D1' }) });
+    } catch (error) {
+      await cancel();
+      throw error;
+    }
   },
 
   // Inquiries

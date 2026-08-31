@@ -11,6 +11,14 @@ const MAX_JSON_BYTES = 1024 * 1024;
 const CLOUDINARY_ROOT = 'circulo-bienes-raices';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
+const UPLOAD_SESSION_TTL_MS = 60 * 60 * 1000;
+const CLEANUP_SAFETY_MS = 5 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 20;
+const IMPORT_MAX_FILES = 200;
+const IMPORT_MAX_MEDIA = 100;
+const IMPORT_MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
+const IMPORT_MAX_SINGLE_BYTES = 250 * 1024 * 1024;
+const IMPORT_MAX_ANALYSIS_TEXT_BYTES = 256 * 1024;
 const PROPERTY_FIELDS = [
   'sourceId', 'syncSource', 'sourceUpdatedAt', 'title', 'slug', 'description',
   'operation', 'type', 'price', 'currency', 'bedrooms', 'bathrooms', 'area',
@@ -297,7 +305,7 @@ const sanitizeProperty = async (env, input, existing = null) => {
 const normalizePhoto = row => row ? { ...row, isMain: Boolean(row.isMain) } : row;
 const normalizeProperty = row => {
   if (!row) return row;
-  const { citySearch: _citySearch, searchText: _searchText, ...publicRow } = row;
+  const { citySearch: _citySearch, searchText: _searchText, syncVersion: _syncVersion, ...publicRow } = row;
   return {
     ...publicRow,
     featured: Boolean(row.featured),
@@ -346,19 +354,67 @@ const cloudinarySignature = async (env, params) => {
   return sha1Hex(`${signingText}${env.CLOUDINARY_API_SECRET}`);
 };
 
-const signCloudinaryUpload = async (env, folder) => {
-  const timestamp = Math.floor(Date.now() / 1000);
+const normalizeSourceFilename = value => String(value || '').replaceAll('\\', '/').replace(/^\/+/, '').slice(0, 500);
+
+const normalizeExpectedFiles = values => [...new Set((Array.isArray(values) ? values : [])
+  .map(normalizeSourceFilename).filter(Boolean))].slice(0, IMPORT_MAX_MEDIA);
+
+const createUploadSession = async (env, { ownerType, ownerId, expectedFiles = [], maxFiles }) => {
+  const normalizedOwner = String(ownerId || '').trim().slice(0, 160);
+  if (!['property', 'source', 'import'].includes(ownerType) || !normalizedOwner) {
+    throw Object.assign(new Error('Destino de carga no válido'), { status: 400 });
+  }
+  const files = normalizeExpectedFiles(expectedFiles);
+  const allowedFiles = Math.min(IMPORT_MAX_MEDIA, Math.max(1, Number(maxFiles || files.length || 1)));
+  if (files.length > allowedFiles) throw Object.assign(new Error('El inventario excede la sesión de carga'), { status: 400 });
+  const id = makeId('upload');
+  const createdAt = Date.now();
+  const expiresAt = createdAt + UPLOAD_SESSION_TTL_MS;
+  const folder = `${CLOUDINARY_ROOT}/${safeFolderSegment(normalizedOwner)}/${safeFolderSegment(id)}`;
+  await env.DB.prepare(`INSERT INTO upload_sessions
+    (id, ownerType, ownerId, folder, expectedFiles, maxFiles, usedFiles, createdAt, expiresAt, completedAt)
+    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NULL)`)
+    .bind(id, ownerType, normalizedOwner, folder, JSON.stringify(files), allowedFiles, createdAt, expiresAt).run();
+  const timestamp = Math.floor(createdAt / 1000);
   const params = { folder, timestamp };
+  const uploads = await Promise.all(files.map(async sourceFilename => {
+    const publicId = `asset-${(await sha256Hex(`${id}\0${sourceFilename}`)).slice(0, 32)}`;
+    return {
+      sourceFilename,
+      publicId,
+      signature: await cloudinarySignature(env, { folder, public_id: publicId, timestamp }),
+    };
+  }));
   return {
     uploadUrl: `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/auto/upload`,
     apiKey: env.CLOUDINARY_API_KEY,
     timestamp,
     folder,
     signature: await cloudinarySignature(env, params),
+    uploads,
+    uploadSessionId: id,
+    expiresAt,
+    maxFiles: allowedFiles,
   };
 };
 
-const normalizeSourceFilename = value => String(value || '').replaceAll('\\', '/').replace(/^\/+/, '').slice(0, 500);
+const requireUploadSession = async (env, asset, ownerType, ownerId) => {
+  const id = String(asset?.uploadSessionId || '').trim();
+  if (!id) throw Object.assign(new Error('La sesión de carga es obligatoria'), { status: 400 });
+  const session = await env.DB.prepare('SELECT * FROM upload_sessions WHERE id = ?').bind(id).first();
+  if (!session || session.ownerType !== ownerType || session.ownerId !== ownerId) {
+    throw Object.assign(new Error('La sesión de carga no pertenece a este destino'), { status: 403 });
+  }
+  if (Number(session.expiresAt) <= Date.now()) {
+    throw Object.assign(new Error('La sesión de carga expiró; solicita una nueva'), { status: 409 });
+  }
+  const sourceFilename = normalizeSourceFilename(asset?.sourceFilename);
+  const expectedFiles = JSON.parse(session.expectedFiles || '[]');
+  if (expectedFiles.length && !expectedFiles.includes(sourceFilename)) {
+    throw Object.assign(new Error('El archivo no forma parte del inventario autorizado'), { status: 403 });
+  }
+  return session;
+};
 
 const cloudinaryPublicId = storedPublicId => {
   const isVideo = String(storedPublicId).startsWith('video:');
@@ -377,7 +433,8 @@ const verifyCloudinaryResponseSignature = async (env, publicId, version, signatu
   return timingSafeTextEqual(expected, String(signature).toLowerCase());
 };
 
-const validateCloudinaryAsset = async (env, asset, owner) => {
+const validateCloudinaryAsset = async (env, asset, ownerType, ownerId) => {
+  const session = await requireUploadSession(env, asset, ownerType, ownerId);
   const publicId = String(asset?.publicId || '').trim();
   const secureUrl = String(asset?.secureUrl || '').trim();
   const signature = String(asset?.signature || '').trim();
@@ -389,8 +446,11 @@ const validateCloudinaryAsset = async (env, asset, owner) => {
   if (!['image', 'video'].includes(resourceType)) {
     throw Object.assign(new Error('Tipo de recurso Cloudinary no permitido'), { status: 400 });
   }
-  const expectedPrefix = `${CLOUDINARY_ROOT}/${safeFolderSegment(owner)}/`;
-  if (!publicId.startsWith(expectedPrefix) || publicId.includes('..')) {
+  const expectedPrefix = `${session.folder}/`;
+  const expectedPublicId = asset.sourceFilename
+    ? `${session.folder}/asset-${(await sha256Hex(`${session.id}\0${normalizeSourceFilename(asset.sourceFilename)}`)).slice(0, 32)}`
+    : '';
+  if (!publicId.startsWith(expectedPrefix) || publicId.includes('..') || (expectedPublicId && publicId !== expectedPublicId)) {
     throw Object.assign(new Error('El recurso no pertenece a la carpeta autorizada'), { status: 400 });
   }
   let parsedUrl;
@@ -411,10 +471,12 @@ const validateCloudinaryAsset = async (env, asset, owner) => {
     resourceType,
     version,
     sourceFilename: normalizeSourceFilename(asset.sourceFilename),
+    uploadSessionId: session.id,
+    uploadSession: session,
   };
 };
 
-const deleteCloudinaryAsset = async (env, storedPublicId, owners) => {
+const destroyCloudinaryAsset = async (env, storedPublicId, owners) => {
   if (!storedPublicId) return { deleted: false, skipped: true };
   if (!ownedCloudinaryPublicId(storedPublicId, owners)) {
     console.warn(JSON.stringify({ message: 'cloudinary_delete_skipped', reason: 'outside_owned_prefix' }));
@@ -431,6 +493,71 @@ const deleteCloudinaryAsset = async (env, storedPublicId, owners) => {
     return { deleted: false, skipped: false };
   }
   return { deleted: payload.result === 'ok', skipped: payload.result === 'not found' };
+};
+
+const cleanupNotBefore = session => Math.max(
+  Date.now() + CLEANUP_SAFETY_MS,
+  Number(session?.expiresAt || 0) + CLEANUP_SAFETY_MS,
+);
+
+const cleanupQueueStatement = (env, storedPublicId, owners, notBefore = Date.now() + UPLOAD_SESSION_TTL_MS + CLEANUP_SAFETY_MS) => {
+  const timestamp = Date.now();
+  return env.DB.prepare(`INSERT INTO cloudinary_cleanup_queue
+    (publicId, owners, notBefore, attempts, lastError, createdAt, updatedAt)
+    VALUES (?, ?, ?, 0, NULL, ?, ?)
+    ON CONFLICT(publicId) DO UPDATE SET owners = excluded.owners,
+      notBefore = MAX(cloudinary_cleanup_queue.notBefore, excluded.notBefore), updatedAt = excluded.updatedAt`)
+    .bind(storedPublicId, JSON.stringify([...new Set(owners.filter(Boolean))]), notBefore, timestamp, timestamp);
+};
+
+const queueCloudinaryCleanup = async (env, storedPublicIds, owners, notBefore) => {
+  const unique = [...new Set(storedPublicIds.filter(Boolean))];
+  if (!unique.length) return 0;
+  await env.DB.batch(unique.map(publicId => cleanupQueueStatement(env, publicId, owners, notBefore)));
+  return unique.length;
+};
+
+export const processCloudinaryCleanup = async env => {
+  const timestamp = Date.now();
+  const { results } = await env.DB.prepare(`SELECT * FROM cloudinary_cleanup_queue
+    WHERE notBefore <= ? ORDER BY notBefore ASC LIMIT ?`).bind(timestamp, CLEANUP_BATCH_SIZE).all();
+  const summary = { inspected: 0, deleted: 0, retained: 0, postponed: 0, failed: 0 };
+  for (const queued of results || []) {
+    summary.inspected += 1;
+    const referenced = await env.DB.prepare('SELECT id FROM photos WHERE publicId = ? LIMIT 1').bind(queued.publicId).first();
+    if (referenced) {
+      await env.DB.prepare('DELETE FROM cloudinary_cleanup_queue WHERE publicId = ?').bind(queued.publicId).run();
+      summary.retained += 1;
+      continue;
+    }
+    const { publicId } = cloudinaryPublicId(queued.publicId);
+    const activeSession = await env.DB.prepare(`SELECT expiresAt FROM upload_sessions
+      WHERE ? LIKE folder || '/%' AND expiresAt > ? ORDER BY expiresAt DESC LIMIT 1`).bind(publicId, timestamp).first();
+    if (activeSession) {
+      await env.DB.prepare('UPDATE cloudinary_cleanup_queue SET notBefore = ?, updatedAt = ? WHERE publicId = ?')
+        .bind(Number(activeSession.expiresAt) + CLEANUP_SAFETY_MS, timestamp, queued.publicId).run();
+      summary.postponed += 1;
+      continue;
+    }
+    let owners = [];
+    try { owners = JSON.parse(queued.owners || '[]'); } catch { owners = []; }
+    try {
+      const result = await destroyCloudinaryAsset(env, queued.publicId, owners);
+      if (result.deleted || result.skipped) {
+        await env.DB.prepare('DELETE FROM cloudinary_cleanup_queue WHERE publicId = ?').bind(queued.publicId).run();
+        summary.deleted += Number(result.deleted);
+      } else {
+        throw new Error('Cloudinary no confirmó el borrado');
+      }
+    } catch (error) {
+      const attempts = Number(queued.attempts || 0) + 1;
+      const retryAt = timestamp + Math.min(6 * 60 * 60 * 1000, (2 ** Math.min(attempts, 8)) * 60 * 1000);
+      await env.DB.prepare(`UPDATE cloudinary_cleanup_queue SET attempts = ?, lastError = ?, notBefore = ?, updatedAt = ?
+        WHERE publicId = ?`).bind(attempts, String(error?.message || error).slice(0, 300), retryAt, timestamp, queued.publicId).run();
+      summary.failed += 1;
+    }
+  }
+  return summary;
 };
 
 const listProperties = async (request, env, admin = false) => {
@@ -486,21 +613,30 @@ const handleLogin = async (request, env) => {
   const timestampMs = Date.now();
   await env.DB.prepare('DELETE FROM login_attempts WHERE firstAttemptAt < ? AND lockedUntil < ?')
     .bind(timestampMs - LOGIN_WINDOW_MS, timestampMs).run();
-  const attempt = await env.DB.prepare('SELECT failures, firstAttemptAt, lockedUntil FROM login_attempts WHERE attemptKey = ?').bind(attemptKey).first();
+  // Un UPDATE no-op fuerza la lectura coordinada con el escritor D1, incluso entre isolates.
+  const attempt = await env.DB.prepare(`UPDATE login_attempts SET failures = failures WHERE attemptKey = ?
+    RETURNING failures, firstAttemptAt, lockedUntil`).bind(attemptKey).first();
   if (Number(attempt?.lockedUntil || 0) > timestampMs) {
     throw Object.assign(new Error('Demasiados intentos. Intenta de nuevo más tarde'), { status: 429 });
   }
   const emailMatches = await timingSafeTextEqual(email, String(env.ADMIN_EMAIL).trim().toLowerCase());
   const passwordMatches = await timingSafeTextEqual(password, String(env.ADMIN_PASSWORD));
   if (!emailMatches || !passwordMatches) {
-    const withinWindow = attempt && timestampMs - Number(attempt.firstAttemptAt || 0) <= LOGIN_WINDOW_MS;
-    const failures = withinWindow ? Number(attempt.failures || 0) + 1 : 1;
-    const firstAttemptAt = withinWindow ? Number(attempt.firstAttemptAt) : timestampMs;
-    const lockedUntil = failures >= LOGIN_MAX_FAILURES ? timestampMs + LOGIN_WINDOW_MS : 0;
-    await env.DB.prepare(`INSERT INTO login_attempts (attemptKey, failures, firstAttemptAt, lockedUntil)
-      VALUES (?, ?, ?, ?) ON CONFLICT(attemptKey) DO UPDATE SET failures = excluded.failures,
-      firstAttemptAt = excluded.firstAttemptAt, lockedUntil = excluded.lockedUntil`)
-      .bind(attemptKey, failures, firstAttemptAt, lockedUntil).run();
+    const updatedAttempt = await env.DB.prepare(`INSERT INTO login_attempts (attemptKey, failures, firstAttemptAt, lockedUntil)
+      VALUES (?, 1, ?, 0)
+      ON CONFLICT(attemptKey) DO UPDATE SET
+        failures = CASE WHEN excluded.firstAttemptAt - login_attempts.firstAttemptAt <= ?
+          THEN login_attempts.failures + 1 ELSE 1 END,
+        firstAttemptAt = CASE WHEN excluded.firstAttemptAt - login_attempts.firstAttemptAt <= ?
+          THEN login_attempts.firstAttemptAt ELSE excluded.firstAttemptAt END,
+        lockedUntil = CASE WHEN (CASE WHEN excluded.firstAttemptAt - login_attempts.firstAttemptAt <= ?
+          THEN login_attempts.failures + 1 ELSE 1 END) >= ?
+          THEN excluded.firstAttemptAt + ? ELSE 0 END
+      RETURNING failures, firstAttemptAt, lockedUntil`)
+      .bind(attemptKey, timestampMs, LOGIN_WINDOW_MS, LOGIN_WINDOW_MS, LOGIN_WINDOW_MS, LOGIN_MAX_FAILURES, LOGIN_WINDOW_MS).first();
+    if (Number(updatedAttempt?.lockedUntil || 0) > timestampMs) {
+      throw Object.assign(new Error('Demasiados intentos. Intenta de nuevo más tarde'), { status: 429 });
+    }
     throw Object.assign(new Error('Credenciales inválidas'), { status: 401 });
   }
   await env.DB.prepare('DELETE FROM login_attempts WHERE attemptKey = ?').bind(attemptKey).run();
@@ -550,14 +686,13 @@ const handleDeleteProperty = async (request, env, id) => {
   const property = await env.DB.prepare('SELECT id, sourceId FROM properties WHERE id = ?').bind(id).first();
   if (!property) throw Object.assign(new Error('Propiedad no encontrada'), { status: 404 });
   const { results } = await env.DB.prepare('SELECT publicId FROM photos WHERE propertyId = ?').bind(id).all();
-  await env.DB.prepare('DELETE FROM properties WHERE id = ?').bind(id).run();
-  let cleanupPending = 0;
   const owners = [property.id, property.sourceId].filter(Boolean);
-  for (const photo of results || []) {
-    const cleanup = await deleteCloudinaryAsset(env, photo.publicId, owners);
-    if (!cleanup.deleted && !cleanup.skipped) cleanupPending += 1;
-  }
-  return json({ message: 'Propiedad eliminada', cleanupPending });
+  const publicIds = [...new Set((results || []).map(photo => photo.publicId).filter(Boolean))];
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM properties WHERE id = ?').bind(id),
+    ...publicIds.map(publicId => cleanupQueueStatement(env, publicId, owners)),
+  ]);
+  return json({ message: 'Propiedad eliminada', cleanupPending: publicIds.length });
 };
 
 const handleInquiry = async (request, env) => {
@@ -653,7 +788,12 @@ const handleUploadSign = async (request, env) => {
     const property = await env.DB.prepare('SELECT id FROM properties WHERE id = ?').bind(owner).first();
     if (!property) throw Object.assign(new Error('Propiedad no encontrada'), { status: 404 });
   }
-  return json(await signCloudinaryUpload(env, `${CLOUDINARY_ROOT}/${safeFolderSegment(owner)}`));
+  return json(await createUploadSession(env, {
+    ownerType: body.propertyId ? 'property' : 'source',
+    ownerId: owner,
+    expectedFiles: body.expectedFiles,
+    maxFiles: body.maxFiles,
+  }));
 };
 
 const handleUploadComplete = async (request, env) => {
@@ -661,7 +801,7 @@ const handleUploadComplete = async (request, env) => {
   const body = await readJson(request);
   const property = await env.DB.prepare('SELECT id, title FROM properties WHERE id = ?').bind(body.propertyId).first();
   if (!property) throw Object.assign(new Error('Propiedad no encontrada'), { status: 404 });
-  const asset = await validateCloudinaryAsset(env, body, property.id);
+  const asset = await validateCloudinaryAsset(env, body, 'property', property.id);
   const storedPublicId = asset.resourceType === 'video' ? `video:${asset.publicId}` : asset.publicId;
   const duplicate = await env.DB.prepare('SELECT * FROM photos WHERE publicId = ?').bind(storedPublicId).first();
   if (duplicate) {
@@ -682,23 +822,243 @@ const handleUploadComplete = async (request, env) => {
     nullableInteger(body.optimizedBytes || body.bytes), nullableInteger(body.width), nullableInteger(body.height),
     nullableNumber(body.duration), body.codec || body.format || null, body.qualityPreset || null,
   ];
-  try {
-    if (prior) {
-      await env.DB.prepare(`UPDATE photos SET url = ?, publicId = ?, alt = ?, "order" = ?, isMain = ?, sourceFilename = ?,
+  const statements = [env.DB.prepare('UPDATE upload_sessions SET usedFiles = usedFiles + 1 WHERE id = ?').bind(asset.uploadSessionId)];
+  if (prior) {
+    statements.push(env.DB.prepare(`UPDATE photos SET url = ?, publicId = ?, alt = ?, "order" = ?, isMain = ?, sourceFilename = ?,
         checksum = ?, originalBytes = ?, optimizedBytes = ?, width = ?, height = ?, duration = ?, codec = ?, qualityPreset = ? WHERE id = ?`)
-        .bind(...mediaValues, id).run();
-    } else {
-      await env.DB.prepare(`INSERT INTO photos (id, url, publicId, alt, "order", isMain, sourceFilename, checksum,
+      .bind(...mediaValues, id));
+  } else {
+    statements.push(env.DB.prepare(`INSERT INTO photos (id, url, publicId, alt, "order", isMain, sourceFilename, checksum,
         originalBytes, optimizedBytes, width, height, duration, codec, qualityPreset, propertyId, createdAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, ...mediaValues, property.id, now()).run();
-    }
+      .bind(id, ...mediaValues, property.id, now()));
+  }
+  if (prior?.publicId && prior.publicId !== storedPublicId) {
+    statements.push(cleanupQueueStatement(env, prior.publicId, [property.id]));
+  }
+  try {
+    await env.DB.batch(statements);
   } catch (error) {
-    if (!prior || prior.publicId !== storedPublicId) await deleteCloudinaryAsset(env, storedPublicId, [property.id]);
+    if (!prior || prior.publicId !== storedPublicId) {
+      await queueCloudinaryCleanup(env, [storedPublicId], [property.id], cleanupNotBefore(asset.uploadSession));
+    }
     throw error;
   }
-  if (prior?.publicId && prior.publicId !== storedPublicId) await deleteCloudinaryAsset(env, prior.publicId, [property.id]);
   return json(normalizePhoto(await env.DB.prepare('SELECT * FROM photos WHERE id = ?').bind(id).first()), prior ? 200 : 201);
+};
+
+const validateImportInventory = inventory => {
+  const rawFiles = Array.isArray(inventory?.files) ? inventory.files : [];
+  if (!rawFiles.length) throw Object.assign(new Error('El inventario está vacío'), { status: 400 });
+  if (rawFiles.length > IMPORT_MAX_FILES) throw Object.assign(new Error(`El inventario excede ${IMPORT_MAX_FILES} archivos`), { status: 413 });
+  const files = rawFiles.map(item => {
+    const path = normalizeSourceFilename(item?.path || item?.name);
+    const size = nullableInteger(item?.size);
+    const category = String(item?.category || '').toLowerCase();
+    if (!path || path.includes('../') || path.startsWith('..') || !Number.isInteger(size) || size < 0 || size > IMPORT_MAX_SINGLE_BYTES) {
+      throw Object.assign(new Error('El inventario contiene una ruta o tamaño no permitido'), { status: 400 });
+    }
+    if (!['image', 'video', 'document', 'other'].includes(category)) {
+      throw Object.assign(new Error('El inventario contiene un tipo no permitido'), { status: 400 });
+    }
+    return { path, name: String(item?.name || path.split('/').at(-1)).slice(0, 240), size, category };
+  });
+  if (new Set(files.map(item => item.path)).size !== files.length) {
+    throw Object.assign(new Error('El inventario contiene rutas duplicadas'), { status: 400 });
+  }
+  const totalBytes = files.reduce((sum, item) => sum + item.size, 0);
+  if (totalBytes > IMPORT_MAX_TOTAL_BYTES) throw Object.assign(new Error('El inventario excede el tamaño total permitido'), { status: 413 });
+  const media = files.filter(item => ['image', 'video'].includes(item.category));
+  if (!media.length || !media.some(item => item.category === 'image')) {
+    throw Object.assign(new Error('La importación requiere al menos una fotografía'), { status: 400 });
+  }
+  if (media.length > IMPORT_MAX_MEDIA) throw Object.assign(new Error(`La importación excede ${IMPORT_MAX_MEDIA} archivos multimedia`), { status: 413 });
+  return {
+    files,
+    media,
+    totalBytes,
+    counts: {
+      images: media.filter(item => item.category === 'image').length,
+      videos: media.filter(item => item.category === 'video').length,
+      documents: files.filter(item => item.category === 'document').length,
+      other: files.filter(item => item.category === 'other').length,
+    },
+  };
+};
+
+const basicImportDraft = (inventory, documents) => {
+  const text = documents.map(item => `${item.name}\n${item.text}`).join('\n').slice(0, IMPORT_MAX_ANALYSIS_TEXT_BYTES);
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const label = name => lines.find(line => foldSpanish(line).startsWith(`${foldSpanish(name)}:`))?.split(':').slice(1).join(':').trim() || '';
+  const priceMatch = text.match(/(?:precio|valor)\s*[:=-]?\s*\$?\s*([0-9][0-9.,\s]*)/i);
+  const firstImage = inventory.media.find(item => item.category === 'image');
+  return {
+    title: label('título') || label('titulo') || lines[0]?.slice(0, 180) || '',
+    description: label('descripción') || label('descripcion') || lines.slice(1, 8).join(' ').slice(0, 4000),
+    operation: foldSpanish(label('operación') || label('operacion')) === 'renta' ? 'renta' : 'venta',
+    type: VALID_TYPES.has(foldSpanish(label('tipo'))) ? foldSpanish(label('tipo')) : 'casa',
+    price: priceMatch ? nullableNumber(priceMatch[1]) : '',
+    currency: 'MXN',
+    city: label('ciudad'),
+    state: label('estado') || 'Veracruz',
+    country: label('país') || label('pais') || 'México',
+    status: 'available', featured: false, published: false, features: [],
+    mainPhotoFilename: firstImage?.path || '',
+  };
+};
+
+const handleImportAnalyze = async (request, env) => {
+  await requireAdmin(request, env);
+  const body = await readJson(request);
+  const inventory = validateImportInventory(body.inventory);
+  const documents = (Array.isArray(body.documents) ? body.documents : []).slice(0, 20).map(item => ({
+    name: normalizeSourceFilename(item?.name),
+    text: String(item?.text || ''),
+  }));
+  const analysisBytes = documents.reduce((sum, item) => sum + encoder.encode(item.text).byteLength, 0);
+  if (analysisBytes > IMPORT_MAX_ANALYSIS_TEXT_BYTES) {
+    throw Object.assign(new Error('Los textos para análisis exceden el límite permitido'), { status: 413 });
+  }
+  const draft = basicImportDraft(inventory, documents);
+  const missingFields = ['title', 'description', 'price', 'city'].filter(field => !draft[field]);
+  return json({
+    draft,
+    inventory: { counts: inventory.counts, totalBytes: inventory.totalBytes, files: inventory.files },
+    ai: { used: false, model: null },
+    review: {
+      confidence: missingFields.length ? 0.35 : 0.7,
+      missingFields,
+      warnings: ['El análisis local es orientativo; confirma los datos antes de registrar.'],
+      visualSummary: 'Inventario revisado localmente. No se enviaron archivos a un servicio de análisis externo.',
+    },
+  });
+};
+
+const handleImportStart = async (request, env) => {
+  await requireAdmin(request, env);
+  const body = await readJson(request);
+  const inventory = validateImportInventory(body.inventory);
+  const importId = makeId('import');
+  const signed = await createUploadSession(env, {
+    ownerType: 'import', ownerId: importId,
+    expectedFiles: inventory.media.map(item => item.path), maxFiles: inventory.media.length,
+  });
+  return json({ importId, signed, inventory: { counts: inventory.counts, totalBytes: inventory.totalBytes } }, 201);
+};
+
+const handleImportCancel = async (request, env) => {
+  await requireAdmin(request, env);
+  const body = await readJson(request);
+  const importId = String(body.importId || '').trim();
+  const sessionId = String(body.uploadSessionId || '').trim();
+  const session = await env.DB.prepare('SELECT * FROM upload_sessions WHERE id = ? AND ownerType = ? AND ownerId = ?')
+    .bind(sessionId, 'import', importId).first();
+  if (!session) throw Object.assign(new Error('Sesión de importación no encontrada'), { status: 404 });
+  const expected = new Set(JSON.parse(session.expectedFiles || '[]'));
+  const storedPublicIds = [];
+  for (const item of Array.isArray(body.files) ? body.files : []) {
+    const sourceFilename = normalizeSourceFilename(item?.sourceFilename);
+    const resourceType = String(item?.resourceType || '').toLowerCase();
+    if (!expected.has(sourceFilename) || !['image', 'video'].includes(resourceType)) continue;
+    const publicId = `${session.folder}/asset-${(await sha256Hex(`${session.id}\0${sourceFilename}`)).slice(0, 32)}`;
+    storedPublicIds.push(resourceType === 'video' ? `video:${publicId}` : publicId);
+  }
+  const cancelledAt = Date.now();
+  await env.DB.prepare('UPDATE upload_sessions SET expiresAt = ?, completedAt = ? WHERE id = ?')
+    .bind(cancelledAt, cancelledAt, session.id).run();
+  const queued = await queueCloudinaryCleanup(env, storedPublicIds, [importId], cancelledAt + CLEANUP_SAFETY_MS);
+  return json({ cancelled: true, cleanupPending: queued });
+};
+
+const handleImportComplete = async (request, env) => {
+  await requireAdmin(request, env);
+  const body = await readJson(request);
+  const importId = String(body.importId || '').trim();
+  const rawAssets = Array.isArray(body.assets) ? body.assets : [];
+  if (!importId) throw Object.assign(new Error('importId es obligatorio'), { status: 400 });
+  const existingImport = await env.DB.prepare('SELECT * FROM properties WHERE sourceId = ? AND syncSource = ?')
+    .bind(importId, 'web-import').first();
+  if (existingImport) {
+    const [result] = await attachPhotos(env, [existingImport]);
+    return json({ property: result, repeated: true, summary: {
+      images: result.photos.filter(item => !String(item.publicId || '').startsWith('video:')).length,
+      videos: result.photos.filter(item => String(item.publicId || '').startsWith('video:')).length,
+      published: result.published,
+    } });
+  }
+  if (!rawAssets.length || rawAssets.length > IMPORT_MAX_MEDIA) {
+    throw Object.assign(new Error('La importación final no tiene un formato válido'), { status: 400 });
+  }
+  const validation = await Promise.allSettled(rawAssets.map(asset => validateCloudinaryAsset(env, asset, 'import', importId)));
+  const accepted = validation.filter(result => result.status === 'fulfilled').map(result => result.value);
+  const rejected = validation.find(result => result.status === 'rejected');
+  const queueAccepted = () => queueCloudinaryCleanup(env,
+    accepted.map(asset => asset.resourceType === 'video' ? `video:${asset.publicId}` : asset.publicId), [importId],
+    Math.max(0, ...accepted.map(asset => cleanupNotBefore(asset.uploadSession))));
+  if (rejected) { await queueAccepted(); throw rejected.reason; }
+  const session = accepted[0].uploadSession;
+  if (accepted.some(asset => asset.uploadSessionId !== session.id)) {
+    await queueAccepted();
+    throw Object.assign(new Error('Todos los archivos deben pertenecer a la misma sesión de importación'), { status: 400 });
+  }
+  const expected = JSON.parse(session.expectedFiles || '[]');
+  const received = accepted.map(asset => asset.sourceFilename);
+  if (accepted.length !== expected.length || new Set(received).size !== received.length || expected.some(path => !received.includes(path))) {
+    await queueAccepted();
+    throw Object.assign(new Error('No se recibieron y validaron todos los archivos del inventario'), { status: 409 });
+  }
+  if (!accepted.some(asset => asset.resourceType === 'image')) {
+    await queueAccepted();
+    throw Object.assign(new Error('La propiedad requiere al menos una fotografía válida'), { status: 400 });
+  }
+  const requestedPublished = parseBoolean(body.draft?.published, false);
+  const data = await sanitizeProperty(env, {
+    ...body.draft, sourceId: importId, syncSource: 'web-import', sourceUpdatedAt: now(), published: false,
+  });
+  const propertyId = makeId('prop');
+  const timestamp = now();
+  const propertyColumns = PROPERTY_FIELDS.filter(field => field !== 'views');
+  const requestedMain = normalizeSourceFilename(body.draft?.mainPhotoFilename);
+  const ordered = [...accepted].sort((a, b) => {
+    const order = Array.isArray(body.draft?.mediaOrder) ? body.draft.mediaOrder.map(normalizeSourceFilename) : expected;
+    return order.indexOf(a.sourceFilename) - order.indexOf(b.sourceFilename);
+  });
+  const main = ordered.find(asset => asset.resourceType === 'image' && asset.sourceFilename === requestedMain)
+    || ordered.find(asset => asset.resourceType === 'image');
+  const statements = [env.DB.prepare(`INSERT INTO properties (id, ${propertyColumns.join(', ')}, views, createdAt, updatedAt)
+    VALUES (?, ${propertyColumns.map(() => '?').join(', ')}, ?, ?, ?)`)
+    .bind(propertyId, ...propertyColumns.map(field => data[field]), data.views || 0, timestamp, timestamp)];
+  for (const [index, asset] of ordered.entries()) {
+    const storedPublicId = asset.resourceType === 'video' ? `video:${asset.publicId}` : asset.publicId;
+    statements.push(env.DB.prepare(`INSERT INTO photos (id, url, publicId, alt, "order", isMain, sourceFilename, checksum,
+      originalBytes, optimizedBytes, width, height, duration, codec, qualityPreset, propertyId, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(makeId('media'), asset.secureUrl, storedPublicId,
+        asset.resourceType === 'video' ? `Video de ${data.title}` : `${data.title} - ${asset.sourceFilename}`,
+        index, Number(asset === main), asset.sourceFilename, asset.checksum || null, nullableInteger(asset.originalBytes),
+        nullableInteger(asset.optimizedBytes || asset.bytes), nullableInteger(asset.width), nullableInteger(asset.height),
+        nullableNumber(asset.duration), asset.codec || asset.format || null, asset.qualityPreset || null, propertyId, timestamp));
+  }
+  statements.push(env.DB.prepare('UPDATE upload_sessions SET usedFiles = usedFiles + ?, completedAt = ? WHERE id = ?')
+    .bind(accepted.length, Date.now(), session.id));
+  statements.push(env.DB.prepare('UPDATE properties SET published = ?, updatedAt = ? WHERE id = ?')
+    .bind(requestedPublished, timestamp, propertyId));
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    await queueAccepted();
+    throw error;
+  }
+  const property = await env.DB.prepare('SELECT * FROM properties WHERE id = ?').bind(propertyId).first();
+  const [result] = await attachPhotos(env, [property]);
+  return json({
+    property: result,
+    summary: {
+      images: result.photos.filter(item => !String(item.publicId || '').startsWith('video:')).length,
+      videos: result.photos.filter(item => String(item.publicId || '').startsWith('video:')).length,
+      published: result.published,
+    },
+  }, 201);
 };
 
 const upsertSyncedProperty = async (request, env) => {
@@ -720,23 +1080,27 @@ const upsertSyncedProperty = async (request, env) => {
   const currentMedia = current.results || [];
   const bySource = new Map(currentMedia.filter(item => item.sourceFilename).map(item => [normalizeSourceFilename(item.sourceFilename), item]));
   const manualMedia = currentMedia.filter(item => !item.sourceFilename);
-  const validationResults = await Promise.allSettled(rawAssets.map(asset => validateCloudinaryAsset(env, asset, sourceId)));
+  const validationResults = await Promise.allSettled(rawAssets.map(asset => validateCloudinaryAsset(env, asset, 'source', sourceId)));
   const rejectedAsset = validationResults.find(result => result.status === 'rejected');
   if (rejectedAsset) {
-    for (const result of validationResults) {
-      if (result.status !== 'fulfilled') continue;
-      const value = result.value;
-      const storedPublicId = value.resourceType === 'video' ? `video:${value.publicId}` : value.publicId;
-      await deleteCloudinaryAsset(env, storedPublicId, [sourceId]);
-    }
+    const accepted = validationResults.filter(result => result.status === 'fulfilled').map(result => result.value);
+    await queueCloudinaryCleanup(env, accepted.map(value => value.resourceType === 'video' ? `video:${value.publicId}` : value.publicId),
+      [sourceId], Math.max(0, ...accepted.map(value => cleanupNotBefore(value.uploadSession))));
     throw rejectedAsset.reason;
   }
   const validatedAssets = validationResults.map(result => result.value);
+  const queueValidatedForCleanup = () => queueCloudinaryCleanup(env,
+    validatedAssets.map(value => value.resourceType === 'video' ? `video:${value.publicId}` : value.publicId),
+    [sourceId], Math.max(0, ...validatedAssets.map(value => cleanupNotBefore(value.uploadSession))));
   const seenSources = new Set();
   const seenPublicIds = new Set();
   for (const asset of validatedAssets) {
-    if (!asset.sourceFilename) throw Object.assign(new Error('Cada archivo sincronizado requiere sourceFilename'), { status: 400 });
+    if (!asset.sourceFilename) {
+      await queueValidatedForCleanup();
+      throw Object.assign(new Error('Cada archivo sincronizado requiere sourceFilename'), { status: 400 });
+    }
     if (seenSources.has(asset.sourceFilename) || seenPublicIds.has(`${asset.resourceType}:${asset.publicId}`)) {
+      await queueValidatedForCleanup();
       throw Object.assign(new Error('La solicitud contiene archivos duplicados'), { status: 400 });
     }
     seenSources.add(asset.sourceFilename);
@@ -745,6 +1109,7 @@ const upsertSyncedProperty = async (request, env) => {
   const removedFilenames = [...new Set((Array.isArray(manifest.removedFilenames) ? manifest.removedFilenames : [])
     .map(normalizeSourceFilename).filter(Boolean))];
   if (removedFilenames.some(filename => seenSources.has(filename))) {
+    await queueValidatedForCleanup();
     throw Object.assign(new Error('Un archivo no puede cargarse y eliminarse en la misma sincronización'), { status: 400 });
   }
 
@@ -816,18 +1181,27 @@ const upsertSyncedProperty = async (request, env) => {
   const main = media.find(item => !String(item.publicId || '').startsWith('video:') && item.sourceFilename === requested)
     || media.find(item => !String(item.publicId || '').startsWith('video:') && item.isMain)
     || media.find(item => !String(item.publicId || '').startsWith('video:'));
-  if (!main) throw Object.assign(new Error('La propiedad debe conservar al menos una fotografía'), { status: 400 });
+  if (!main) {
+    await queueValidatedForCleanup();
+    throw Object.assign(new Error('La propiedad debe conservar al menos una fotografía'), { status: 400 });
+  }
 
   const timestamp = now();
   const propertyColumns = PROPERTY_FIELDS.filter(field => field !== 'views');
   const statements = [];
   if (existing) {
-    statements.push(env.DB.prepare(`UPDATE properties SET ${propertyColumns.map(field => `${field} = ?`).join(', ')}, views = ?, updatedAt = ? WHERE id = ?`)
-      .bind(...propertyColumns.map(field => data[field]), data.views || 0, timestamp, propertyId));
+    const nextVersion = Number(existing.syncVersion || 0) + 1;
+    statements.push(env.DB.prepare(`INSERT INTO property_sync_commits (propertyId, version, createdAt) VALUES (?, ?, ?)`)
+      .bind(propertyId, nextVersion, timestamp));
+    statements.push(env.DB.prepare(`UPDATE properties SET ${propertyColumns.map(field => `${field} = ?`).join(', ')},
+      views = ?, syncVersion = ?, updatedAt = ? WHERE id = ?`)
+      .bind(...propertyColumns.map(field => data[field]), data.views || 0, nextVersion, timestamp, propertyId));
   } else {
     statements.push(env.DB.prepare(`INSERT INTO properties (id, ${propertyColumns.join(', ')}, views, createdAt, updatedAt)
       VALUES (?, ${propertyColumns.map(() => '?').join(', ')}, ?, ?, ?)`)
       .bind(propertyId, ...propertyColumns.map(field => data[field]), data.views || 0, timestamp, timestamp));
+    statements.push(env.DB.prepare(`INSERT INTO property_sync_commits (propertyId, version, createdAt) VALUES (?, 0, ?)`)
+      .bind(propertyId, timestamp));
   }
   for (const row of removedRows) statements.push(env.DB.prepare('DELETE FROM photos WHERE id = ? AND propertyId = ?').bind(row.id, propertyId));
   for (const [index, item] of media.entries()) {
@@ -849,18 +1223,27 @@ const upsertSyncedProperty = async (request, env) => {
         .bind(index, isMain, item.id, propertyId));
     }
   }
+  const assetsBySession = new Map();
+  for (const asset of validatedAssets) assetsBySession.set(asset.uploadSessionId, (assetsBySession.get(asset.uploadSessionId) || 0) + 1);
+  for (const [sessionId, count] of assetsBySession) {
+    statements.push(env.DB.prepare(`UPDATE upload_sessions SET
+      usedFiles = CASE WHEN completedAt IS NULL THEN usedFiles + ? ELSE usedFiles END,
+      completedAt = COALESCE(completedAt, ?) WHERE id = ?`)
+      .bind(count, Date.now(), sessionId));
+  }
+  for (const publicId of [...new Set(cleanupAfterCommit)]) {
+    statements.push(cleanupQueueStatement(env, publicId, [sourceId]));
+  }
 
   try {
     await env.DB.batch(statements);
   } catch (error) {
-    for (const publicId of [...new Set(cleanupOnFailure)]) await deleteCloudinaryAsset(env, publicId, [sourceId]);
+    const failureNotBefore = Math.max(Date.now() + UPLOAD_SESSION_TTL_MS + CLEANUP_SAFETY_MS,
+      ...validatedAssets.map(asset => cleanupNotBefore(asset.uploadSession)));
+    await queueCloudinaryCleanup(env, cleanupOnFailure, [sourceId], failureNotBefore);
     throw error;
   }
-  let cleanupPending = 0;
-  for (const publicId of [...new Set(cleanupAfterCommit)]) {
-    const cleanup = await deleteCloudinaryAsset(env, publicId, [sourceId]);
-    if (!cleanup.deleted && !cleanup.skipped) cleanupPending += 1;
-  }
+  const cleanupPending = new Set(cleanupAfterCommit).size;
   const finalProperty = await env.DB.prepare('SELECT * FROM properties WHERE id = ?').bind(propertyId).first();
   const [result] = await attachPhotos(env, [finalProperty]);
   return json({
@@ -915,6 +1298,10 @@ const handleApi = async (request, env) => {
   if (method === 'GET' && path === '/api/admin/properties') { await requireAdmin(request, env); return listProperties(request, env, true); }
   if (method === 'POST' && path === '/api/admin/uploads/sign') return handleUploadSign(request, env);
   if (method === 'POST' && path === '/api/admin/uploads/complete') return handleUploadComplete(request, env);
+  if (method === 'POST' && path === '/api/admin/property-import/analyze') return handleImportAnalyze(request, env);
+  if (method === 'POST' && path === '/api/admin/property-import/start') return handleImportStart(request, env);
+  if (method === 'POST' && path === '/api/admin/property-import/cancel') return handleImportCancel(request, env);
+  if (method === 'POST' && path === '/api/admin/property-import/complete') return handleImportComplete(request, env);
   if (method === 'POST' && path === '/api/admin/property-sync/sign-upload') return handleUploadSign(request, env);
   if (method === 'POST' && path === '/api/admin/property-sync/sync/upsert') return upsertSyncedProperty(request, env);
 
@@ -1010,11 +1397,12 @@ const handleApi = async (request, env) => {
       ? await env.DB.prepare(`SELECT id FROM photos WHERE propertyId = ? AND id != ?
         AND (publicId IS NULL OR publicId NOT LIKE 'video:%') ORDER BY "order" LIMIT 1`).bind(match[1], photo.id).first()
       : null;
+    const owners = [property?.id, property?.sourceId].filter(Boolean);
     const statements = [env.DB.prepare('DELETE FROM photos WHERE id = ? AND propertyId = ?').bind(photo.id, match[1])];
     if (replacement) statements.push(env.DB.prepare('UPDATE photos SET isMain = 1 WHERE id = ? AND propertyId = ?').bind(replacement.id, match[1]));
+    if (photo.publicId) statements.push(cleanupQueueStatement(env, photo.publicId, owners));
     await env.DB.batch(statements);
-    const cleanup = await deleteCloudinaryAsset(env, photo.publicId, [property?.id, property?.sourceId].filter(Boolean));
-    return json({ message: 'Archivo eliminado', cleanupPending: Number(!cleanup.deleted && !cleanup.skipped) });
+    return json({ message: 'Archivo eliminado', cleanupPending: Number(Boolean(photo.publicId)) });
   }
 
   throw Object.assign(new Error('Ruta API no encontrada'), { status: 404 });
@@ -1047,7 +1435,7 @@ const withSecurityHeaders = (response, request, env) => {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
       const isApi = url.pathname === '/api' || url.pathname.startsWith('/api/');
@@ -1057,6 +1445,11 @@ export default {
       const response = isApi
         ? await handleApi(request, env)
         : await env.ASSETS.fetch(request);
+      if (isApi && ctx?.waitUntil) {
+        ctx.waitUntil(processCloudinaryCleanup(env).catch(error => console.error(JSON.stringify({
+          message: 'cloudinary_cleanup_failed', error: error?.message || String(error),
+        }))));
+      }
       return withSecurityHeaders(response, request, env);
     } catch (error) {
       const status = Number(error?.status || 500);
@@ -1070,5 +1463,8 @@ export default {
       }
       return withSecurityHeaders(json({ error: status >= 500 ? 'Error interno del servidor' : error.message }, status), request, env);
     }
+  },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(processCloudinaryCleanup(env));
   },
 };

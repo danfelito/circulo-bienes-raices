@@ -365,11 +365,15 @@ const remotePropertyState = async (portalUrl, token, sourceId) => {
   return payload;
 };
 
-const requestCloudinaryUploadSignature = async (portalUrl, token, sourceId) => {
+const requestCloudinaryUploadSignature = async (portalUrl, token, sourceId, files) => {
   const response = await fetch(`${portalUrl}/api/admin/property-sync/sign-upload`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceId }),
+    body: JSON.stringify({
+      sourceId,
+      expectedFiles: files.map(file => file.sourceFilename),
+      maxFiles: Math.max(1, files.length),
+    }),
   });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 404) return null;
@@ -378,6 +382,8 @@ const requestCloudinaryUploadSignature = async (portalUrl, token, sourceId) => {
 };
 
 const uploadOptimizedFileDirectly = async (file, signedUpload) => {
+  const upload = signedUpload.uploads?.find(item => item.sourceFilename === file.sourceFilename);
+  if (!upload) throw new Error(`La sesión no autorizó ${file.sourceFilename}`);
   const buffer = await fsp.readFile(file.optimizedPath);
   const type = file.category === 'video' ? 'video/mp4' : 'image/webp';
   const form = new FormData();
@@ -385,7 +391,8 @@ const uploadOptimizedFileDirectly = async (file, signedUpload) => {
   form.append('api_key', String(signedUpload.apiKey));
   form.append('timestamp', String(signedUpload.timestamp));
   form.append('folder', String(signedUpload.folder));
-  form.append('signature', String(signedUpload.signature));
+  form.append('public_id', String(upload.publicId));
+  form.append('signature', String(upload.signature));
 
   const response = await fetch(signedUpload.uploadUrl, { method: 'POST', body: form });
   const payload = await response.json().catch(() => ({}));
@@ -394,6 +401,7 @@ const uploadOptimizedFileDirectly = async (file, signedUpload) => {
   }
 
   return {
+    uploadSessionId: signedUpload.uploadSessionId,
     sourceFilename: file.sourceFilename,
     checksum: file.checksum,
     originalBytes: file.originalBytes,
@@ -496,12 +504,13 @@ const syncProperty = async (sourceId, credentials) => {
   const remote = await remotePropertyState(portalUrl, token, sourceId);
   const remoteChecksums = new Map((remote?.photos || []).filter(file => file.sourceFilename).map(file => [file.sourceFilename, file.checksum]));
   const lastSynced = manifest.lastSyncedChecksums || {};
-  const signedUpload = await requestCloudinaryUploadSignature(portalUrl, token, sourceId);
-  const changedFiles = remote
+  const cloudflareChangedFiles = remote
     ? manifest.files.filter(file => remoteChecksums.get(file.sourceFilename) !== file.checksum)
-    : signedUpload
-      ? manifest.files
-      : manifest.files.filter(file => lastSynced[file.sourceFilename] !== file.checksum);
+    : manifest.files;
+  const signedUpload = await requestCloudinaryUploadSignature(portalUrl, token, sourceId, cloudflareChangedFiles);
+  const changedFiles = signedUpload
+    ? cloudflareChangedFiles
+    : manifest.files.filter(file => lastSynced[file.sourceFilename] !== file.checksum);
   const payload = signedUpload
     ? await syncPropertyDirectly({ portalUrl, token, sourceId, manifest, changedFiles, signedUpload })
     : await syncPropertyLegacy({ portalUrl, token, sourceId, manifest, changedFiles });

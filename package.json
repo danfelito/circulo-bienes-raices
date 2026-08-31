@@ -10,7 +10,7 @@
     "cf:types": "wrangler types cloudflare/worker-configuration.d.ts",
     "d1:local": "wrangler d1 migrations apply circulo-bienes-raices-db --local",
     "d1:remote": "wrangler d1 migrations apply circulo-bienes-raices-db --remote",
-    "test": "node cloudflare/tests/worker-smoke.mjs && node tools/circulo-media-sync/tests/metadata.test.js",
+    "test": "node cloudflare/tests/worker-smoke.mjs && node tools/circulo-media-sync/tests/metadata.test.js && node frontend/tests/property-import.test.mjs",
     "check": "node --check cloudflare/src/index.mjs && node --check tools/circulo-media-sync/server.js && node --check tools/circulo-media-sync/metadata.js && npm test && npm --prefix frontend run build"
   },
   "devDependencies": {
