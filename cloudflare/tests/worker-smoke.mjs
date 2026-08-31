@@ -107,6 +107,7 @@ const env = {
   CLOUDINARY_CLOUD_NAME: 'demo-cloud',
   CLOUDINARY_API_KEY: '1234567890',
   CLOUDINARY_API_SECRET: 'cloudinary-smoke-secret',
+  CLOUDINARY_ROOT: 'circulo-bienes-raices-staging-test',
   CONTACT_EMAIL: 'contacto@example.com',
   CONTACT_PHONE: '',
   WHATSAPP_NUMBER: '',

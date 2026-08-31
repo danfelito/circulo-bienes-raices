@@ -42,21 +42,29 @@ Las cargas tienen hasta tres intentos con espera incremental. Cancelar invalida 
 - `wrangler dev` local: `GET /api/health` respondió 200 con D1 conectado.
 - Todas las llamadas externas de las pruebas están simuladas; no se usaron recursos Cloudflare ni Cloudinary remotos.
 
-## Vulnerabilidades de dependencias pendientes
+## Vulnerabilidades de dependencias verificadas y corregidas
 
-No se ejecutó `npm audit fix --force` ni se actualizó ninguna dependencia a una versión mayor o incompatible.
+No se ejecutó `npm audit fix --force`. Cada actualización se instaló primero en una copia Git aislada, después se probó en conjunto y finalmente se aplicó a la rama local.
 
-| Dependencia instalada | Alcance | Vulnerabilidad | Versión corregida indicada por npm | Impacto antes de actualizar |
+| Dependencia anterior | Alcance | Vulnerabilidad verificada | Versión aplicada | Resultado |
 |---|---|---|---|---|
-| `vite@5.4.21` / `esbuild@0.21.5` | Desarrollo y compilación del frontend; el servidor Vite no forma parte del Worker publicado | Lectura desde servidor de desarrollo, rutas alternativas de Windows, mapas de dependencias y solicitudes desde otros sitios. Alta por el bypass de `server.fs.deny`; las restantes son moderadas. | `vite@8.2.2` (incluye `esbuild` corregido) | Salto mayor. Requiere Node `^20.19.0` o `>=22.12.0`, revisar compatibilidad de `@vitejs/plugin-react`, configuración y salida de compilación. Ejecutar navegación y build completos. |
-| `react-router-dom@6.30.6` / `react-router@6.30.6` | Navegación del frontend | Redirección abierta por barra invertida y riesgo en deserialización de errores SSR. Esta aplicación usa SPA y no SSR, por lo que el segundo alcance no está activo actualmente; los enlaces siguen requiriendo revisión. | `react-router-dom@7.18.3` | Salto mayor. Requiere Node `>=20`; revisar rutas relativas, navegación, `ProtectedRoute`, login y enlaces administrativos/públicos. |
-| `sharp@0.33.5` | Aplicación local Media Sync; procesa imágenes no confiables antes de cargarlas | Vulnerabilidades heredadas de libvips (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590 y CVE-2026-35591). Alta. | `sharp@0.35.4` | npm lo considera cambio mayor por estar en `0.x`. Requiere Node `>=20.9`; validar binarios nativos de Windows, orientación EXIF, conversión WebP, metadatos, consumo de memoria y escaneo real de una carpeta. |
+| `vite@5.4.21` / `esbuild@0.21.5` | Desarrollo y compilación del frontend; el servidor Vite no forma parte del Worker publicado | GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3, GHSA-fx2h-pf6j-xcff y GHSA-67mh-4wv8-2f99. Incluyen lectura de rutas y exposición de respuestas del servidor de desarrollo; una era alta. | `vite@8.2.2` y `@vitejs/plugin-react@6.1.1` | Build correcto con Node 24; cambio de Rollup/esbuild a Rolldown. Sigue el aviso no vulnerable de fragmento mayor de 500 KiB. |
+| `react-router-dom@6.30.6` / `react-router@6.30.6` | Navegación del frontend | GHSA-wrjc-x8rr-h8h6 (redirección abierta) y GHSA-337j-9hxr-rhxg (deserialización SSR). La aplicación es SPA, pero el paquete vulnerable estaba instalado. | `react-router-dom@7.18.3` | Compilación y pruebas automatizadas del importador correctas. La regresión visual completa de rutas queda pendiente por el bloqueo de la extensión de Chrome. Requiere Node `>=20`. |
+| `sharp@0.33.5` | Aplicación local Media Sync; procesa imágenes no confiables | GHSA-f88m-g3jw-g9cj: vulnerabilidades heredadas de libvips CVE-2026-33327, CVE-2026-33328, CVE-2026-35590 y CVE-2026-35591. Alta. | `sharp@0.35.4` | Sintaxis y pruebas de metadatos/español correctas; conversión real PNG a WebP de 1200×801 correcta. Requiere Node `>=20.9`. |
 
-Resultado de auditoría actual: raíz `0`; frontend `4` (3 moderadas, 1 alta); Media Sync `1` alta. La nueva dependencia `@zip.js/zip.js@2.8.61` no añadió avisos al informe.
+Resultado de las tres auditorías después de aplicar los cambios: raíz `0`, frontend `0` y Media Sync `0`.
+
+## Entorno remoto de pruebas
+
+- La configuración `staging` se valida con `wrangler deploy --env staging --dry-run` y produciría el Worker `circulo-bienes-raices-staging`.
+- La D1 reservada en configuración se llama `circulo-bienes-raices-staging-db`; su identificador sigue como marcador hasta crear la base en la cuenta correcta.
+- `CLOUDINARY_ROOT=circulo-bienes-raices-staging` separa firmas, cargas y limpieza de la raíz productiva `circulo-bienes-raices`.
+- Los bindings, variables y secretos se declaran por entorno porque Wrangler no los hereda automáticamente.
+- La creación remota está bloqueada: Wrangler no tiene una sesión autenticada ni `CLOUDFLARE_API_TOKEN`. También faltan las credenciales de la cuenta Cloudinary de pruebas. No se usó el modo temporal de Wrangler.
 
 ## Pendientes operativos
 
-- Elegir y programar el salto de Vite 8, React Router 7 y Sharp 0.35 con sus regresiones específicas.
+- Completar en Chrome la selección visual de carpeta y ZIP. La extensión bloqueó `setFiles` hasta habilitar “Allow access to file URLs”; la validación directa del mismo fixture sí pasó con 7 archivos, 6 imágenes y README con `Cabaña`, `México` y `city: Lomas del Porvenir`.
+- Conectar Wrangler con la cuenta Cloudflare correcta y aportar credenciales Cloudinary de pruebas; después crear D1, aplicar migraciones, configurar secretos y desplegar sólo `staging`.
 - Antes de producción, configurar un disparador programado o Queue para procesar la limpieza incluso cuando no haya tráfico. El Worker ya expone el manejador `scheduled`, pero este cambio local no crea ningún recurso.
-- Probar el importador manualmente en Chrome con una carpeta real y un ZIP grande dentro de los límites.
 - Dividir el bundle del frontend; el build local avisa que el fragmento principal supera 500 KiB.

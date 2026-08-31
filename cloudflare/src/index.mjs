@@ -8,7 +8,7 @@ const JWT_ISSUER = 'circulo-bienes-raices';
 const JWT_AUDIENCE = 'circulo-admin';
 const JWT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_JSON_BYTES = 1024 * 1024;
-const CLOUDINARY_ROOT = 'circulo-bienes-raices';
+const DEFAULT_CLOUDINARY_ROOT = 'circulo-bienes-raices';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
 const UPLOAD_SESSION_TTL_MS = 60 * 60 * 1000;
@@ -359,6 +359,8 @@ const normalizeSourceFilename = value => String(value || '').replaceAll('\\', '/
 const normalizeExpectedFiles = values => [...new Set((Array.isArray(values) ? values : [])
   .map(normalizeSourceFilename).filter(Boolean))].slice(0, IMPORT_MAX_MEDIA);
 
+const cloudinaryRoot = env => safeFolderSegment(env.CLOUDINARY_ROOT || DEFAULT_CLOUDINARY_ROOT);
+
 const createUploadSession = async (env, { ownerType, ownerId, expectedFiles = [], maxFiles }) => {
   const normalizedOwner = String(ownerId || '').trim().slice(0, 160);
   if (!['property', 'source', 'import'].includes(ownerType) || !normalizedOwner) {
@@ -370,7 +372,7 @@ const createUploadSession = async (env, { ownerType, ownerId, expectedFiles = []
   const id = makeId('upload');
   const createdAt = Date.now();
   const expiresAt = createdAt + UPLOAD_SESSION_TTL_MS;
-  const folder = `${CLOUDINARY_ROOT}/${safeFolderSegment(normalizedOwner)}/${safeFolderSegment(id)}`;
+  const folder = `${cloudinaryRoot(env)}/${safeFolderSegment(normalizedOwner)}/${safeFolderSegment(id)}`;
   await env.DB.prepare(`INSERT INTO upload_sessions
     (id, ownerType, ownerId, folder, expectedFiles, maxFiles, usedFiles, createdAt, expiresAt, completedAt)
     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NULL)`)
@@ -422,9 +424,9 @@ const cloudinaryPublicId = storedPublicId => {
   return { isVideo, publicId };
 };
 
-const ownedCloudinaryPublicId = (storedPublicId, owners) => {
+const ownedCloudinaryPublicId = (env, storedPublicId, owners) => {
   const { publicId } = cloudinaryPublicId(storedPublicId);
-  return owners.some(owner => publicId.startsWith(`${CLOUDINARY_ROOT}/${safeFolderSegment(owner)}/`));
+  return owners.some(owner => publicId.startsWith(`${cloudinaryRoot(env)}/${safeFolderSegment(owner)}/`));
 };
 
 const verifyCloudinaryResponseSignature = async (env, publicId, version, signature) => {
@@ -478,7 +480,7 @@ const validateCloudinaryAsset = async (env, asset, ownerType, ownerId) => {
 
 const destroyCloudinaryAsset = async (env, storedPublicId, owners) => {
   if (!storedPublicId) return { deleted: false, skipped: true };
-  if (!ownedCloudinaryPublicId(storedPublicId, owners)) {
+  if (!ownedCloudinaryPublicId(env, storedPublicId, owners)) {
     console.warn(JSON.stringify({ message: 'cloudinary_delete_skipped', reason: 'outside_owned_prefix' }));
     return { deleted: false, skipped: true };
   }

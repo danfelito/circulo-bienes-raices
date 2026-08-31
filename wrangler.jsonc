@@ -26,9 +26,31 @@
   "vars": {
     "NODE_ENV": "production",
     "CORS_ORIGIN": "",
+    "CLOUDINARY_ROOT": "circulo-bienes-raices",
     "CONTACT_EMAIL": "",
     "CONTACT_PHONE": "",
     "WHATSAPP_NUMBER": "",
     "CONTACT_ADDRESS": ""
+  },
+  "env": {
+    "staging": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "circulo-bienes-raices-staging-db",
+          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "cloudflare/migrations"
+        }
+      ],
+      "vars": {
+        "NODE_ENV": "staging",
+        "CORS_ORIGIN": "",
+        "CLOUDINARY_ROOT": "circulo-bienes-raices-staging",
+        "CONTACT_EMAIL": "",
+        "CONTACT_PHONE": "",
+        "WHATSAPP_NUMBER": "",
+        "CONTACT_ADDRESS": ""
+      }
+    }
   }
 }
