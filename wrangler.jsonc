@@ -38,7 +38,7 @@
         {
           "binding": "DB",
           "database_name": "circulo-bienes-raices-staging",
-          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+          "database_id": "435b0a4f-63bf-47c0-add9-d487a7f0e7e1",
           "migrations_dir": "cloudflare/migrations"
         }
       ],
