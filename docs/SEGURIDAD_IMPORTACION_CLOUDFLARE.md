@@ -57,7 +57,7 @@ Resultado de las tres auditorías después de aplicar los cambios: raíz `0`, fr
 ## Entorno remoto de pruebas
 
 - La configuración `staging` se valida con `wrangler deploy --env staging --dry-run` y produciría el Worker `circulo-bienes-raices-staging`.
-- La D1 reservada en configuración se llama `circulo-bienes-raices-staging-db`; su identificador sigue como marcador hasta crear la base en la cuenta correcta.
+- La D1 reservada en configuración se llama `circulo-bienes-raices-staging`; su identificador sigue como marcador hasta crear la base en la cuenta correcta.
 - `CLOUDINARY_ROOT=circulo-bienes-raices-staging` separa firmas, cargas y limpieza de la raíz productiva `circulo-bienes-raices`.
 - Los bindings, variables y secretos se declaran por entorno porque Wrangler no los hereda automáticamente.
 - La creación remota está bloqueada: Wrangler no tiene una sesión autenticada ni `CLOUDFLARE_API_TOKEN`. También faltan las credenciales de la cuenta Cloudinary de pruebas. No se usó el modo temporal de Wrangler.

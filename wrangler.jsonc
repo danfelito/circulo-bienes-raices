@@ -37,7 +37,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "circulo-bienes-raices-staging-db",
+          "database_name": "circulo-bienes-raices-staging",
           "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
           "migrations_dir": "cloudflare/migrations"
         }
