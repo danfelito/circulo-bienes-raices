@@ -5,7 +5,7 @@ import { ArrowUpRight, Menu, Moon, Sun, X } from 'lucide-react';
 import BrandLogo from './BrandLogo';
 import { useTheme } from '../theme/ThemeContext';
 
-const Navbar = () => {
+const Navbar = ({ fixedDark = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
@@ -23,6 +23,7 @@ const Navbar = () => {
     { to: '/#servicios', label: 'Servicios' },
     { to: '/#nosotros', label: 'Nosotros' },
     { to: '/#contacto', label: 'Contacto' },
+    { to: '/asesores', label: 'Asesores', route: true },
     {
       to: 'https://circulo-inmobiliario.onrender.com/',
       label: 'Buscador inteligente ↗',
@@ -41,7 +42,7 @@ const Navbar = () => {
       <div className="mx-auto flex h-[82px] max-w-[1500px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         <BrandLogo compact />
 
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegación principal">
+        <nav className="hidden items-center gap-1 xl:flex" aria-label="Navegación principal">
           {navLinks.map((item) => item.route ? (
             <Link key={item.to} to={item.to} className={`nav-link px-3 py-2 text-sm font-semibold transition-colors ${location.pathname === item.to ? 'nav-link-active' : ''}`}>
               {item.label}
@@ -59,8 +60,8 @@ const Navbar = () => {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 lg:flex">
-          <button
+        <div className="hidden items-center gap-2 xl:flex">
+          {!fixedDark && <button
             type="button"
             onClick={toggleTheme}
             className="theme-toggle"
@@ -68,21 +69,21 @@ const Navbar = () => {
             title={theme === 'dark' ? 'Modo día' : 'Modo oscuro'}
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          </button>}
           <a href="/#contacto" className="nav-cta">
             Agendar visita <ArrowUpRight size={16} />
           </a>
         </div>
 
-        <div className="flex items-center gap-2 lg:hidden">
-          <button
+        <div className="flex items-center gap-2 xl:hidden">
+          {!fixedDark && <button
             type="button"
             onClick={toggleTheme}
             className="theme-toggle"
             aria-label={theme === 'dark' ? 'Activar modo día' : 'Activar modo oscuro'}
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          </button>}
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
@@ -100,7 +101,7 @@ const Navbar = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="mobile-nav border-t lg:hidden"
+            className="mobile-nav border-t xl:hidden"
           >
             <div className="space-y-1 px-4 py-4">
               {navLinks.map((item) => item.route ? (
