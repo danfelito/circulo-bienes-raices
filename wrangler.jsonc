@@ -27,7 +27,7 @@
     "NODE_ENV": "production",
     "CORS_ORIGIN": "",
     "CLOUDINARY_ROOT": "circulo-bienes-raices",
-    "CONTACT_EMAIL": "",
+    "CONTACT_EMAIL": "contacto@circulointernacionalveracruz.org",
     "CONTACT_PHONE": "",
     "WHATSAPP_NUMBER": "",
     "CONTACT_ADDRESS": ""
@@ -46,7 +46,7 @@
         "NODE_ENV": "staging",
         "CORS_ORIGIN": "",
         "CLOUDINARY_ROOT": "circulo-bienes-raices-staging",
-        "CONTACT_EMAIL": "",
+        "CONTACT_EMAIL": "contacto@circulointernacionalveracruz.org",
         "CONTACT_PHONE": "",
         "WHATSAPP_NUMBER": "",
         "CONTACT_ADDRESS": ""
