@@ -11,6 +11,7 @@ import Testimonials from './components/Testimonials';
 import CtaFooter from './components/CtaFooter';
 import PropertiesPage from './pages/PropertiesPage';
 import PropertyDetailPage from './pages/PropertyDetailPage';
+import AdvisorsPage from './pages/AdvisorsPage';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProperties from './pages/admin/AdminProperties';
@@ -49,14 +50,16 @@ const NotFound = () => (
 const AppLayout = () => {
   const location = useLocation();
   const hasIntegratedFooter = location.pathname === '/';
+  const isAdvisorsPage = /^\/asesores\/?$/.test(location.pathname);
 
   return (
-    <div className="theme-app min-h-screen">
-      <Navbar />
+    <div className={`theme-app min-h-screen ${isAdvisorsPage ? 'advisors-dark' : ''}`}>
+      <Navbar fixedDark={isAdvisorsPage} />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/propiedades" element={<PropertiesPage />} />
         <Route path="/propiedades/:slug" element={<PropertyDetailPage />} />
+        <Route path="/asesores" element={<AdvisorsPage />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/propiedades" element={<ProtectedRoute><AdminProperties /></ProtectedRoute>} />

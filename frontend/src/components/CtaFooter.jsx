@@ -46,6 +46,7 @@ export default function CtaFooter() {
               <h4 className="text-white font-body font-medium mb-6">Servicios</h4>
               <ul className="space-y-3">
                 {serviceLinks.map(item => <li key={item}><a href="#servicios" className="text-white/60 text-sm hover:text-white">{item}</a></li>)}
+                <li><Link to="/asesores" className="text-white/60 text-sm hover:text-white">Asesores</Link></li>
               </ul>
             </div>
             <div>

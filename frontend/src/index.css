@@ -305,3 +305,33 @@ textarea {
 .leaflet-container {
   z-index: 1;
 }
+
+/* Asesores conserva su modo oscuro sin cambiar la preferencia del resto del portal. */
+.advisors-dark {
+  --page: #050505;
+  --surface: #0a0a0a;
+  --surface-raised: #111111;
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.64);
+  --border: rgba(255, 255, 255, 0.13);
+  --glass: rgba(255, 255, 255, 0.035);
+  --nav: rgba(5, 5, 5, 0.96);
+  --logo-text: #ffffff;
+  color-scheme: dark;
+}
+.advisors-page { background: #050505; color: #fff; }
+.advisors-eyebrow { color: #ed1c2e; font-size: 0.875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+.advisors-muted { color: #a8a8ae; }
+.advisors-card { background: #0e0e10; border: 1px solid #29292d; border-radius: 24px; }
+.advisors-icon { display: grid; place-items: center; width: 64px; height: 64px; flex-shrink: 0; background: rgba(237,28,46,0.1); border: 1px solid rgba(237,28,46,0.22); border-radius: 18px; color: #ed1c2e; }
+.advisors-open { color: #fff; text-underline-offset: 5px; }
+.advisors-open:hover { text-decoration: underline; }
+.advisors-share { border-top: 1px solid #29292d; }
+.advisors-link,
+:root[data-theme='light'] .advisors-dark .advisors-link { background: #080809 !important; color: #e7e7e9 !important; border: 1px solid #343439 !important; }
+.advisors-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; min-height: 48px; padding: 0.8rem 1.4rem; border-radius: 999px; font-size: 0.9375rem; font-weight: 600; }
+.advisors-button-primary { background: #ed1c2e; color: #fff; }
+.advisors-button-primary:hover { background: #c51222; }
+.advisors-button-secondary { background: #19191c; color: #fff; border: 1px solid #343439; }
+.advisors-button-secondary:hover { background: #242428; }
+.advisors-dark :is(a, button, input, textarea):focus-visible { outline: 2px solid #ed1c2e; outline-offset: 4px; }
