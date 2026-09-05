@@ -9,6 +9,7 @@ export const IMPORT_LIMITS = Object.freeze({
   maxZipExpandedBytes: 512 * 1024 * 1024,
   maxZipEntries: 200,
   maxCompressionRatio: 100,
+  maxAnalysisDocuments: 20,
   maxAnalysisTextBytes: 256 * 1024,
 });
 
@@ -118,13 +119,33 @@ export const buildInventory = files => {
 export const readAnalysisDocuments = async (files, signal) => {
   const documents = [];
   let total = 0;
-  for (const file of files) {
+  const candidates = files.filter(file => TEXT_EXTENSIONS.has(extensionOf(file.name)))
+    .sort((a, b) => Number(!/(?:^|\/)readme\.(txt|md)$/i.test(relativeName(a)))
+      - Number(!/(?:^|\/)readme\.(txt|md)$/i.test(relativeName(b))));
+  if (candidates.length > IMPORT_LIMITS.maxAnalysisDocuments) {
+    throw new Error(`Hay ${candidates.length} textos analizables. El máximo es ${IMPORT_LIMITS.maxAnalysisDocuments}; carga una sola propiedad.`);
+  }
+  const utf8 = new TextDecoder('utf-8');
+  const windows1252 = new TextDecoder('windows-1252');
+  const decode = bytes => {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+      const swapped = bytes.subarray(2).slice();
+      for (let index = 0; index + 1 < swapped.length; index += 2) [swapped[index], swapped[index + 1]] = [swapped[index + 1], swapped[index]];
+      return new TextDecoder('utf-16le').decode(swapped);
+    }
+    const first = utf8.decode(bytes);
+    const nulRatio = (first.match(/\0/g)?.length || 0) / Math.max(first.length, 1);
+    if (nulRatio > 0.2) return new TextDecoder('utf-16le').decode(bytes);
+    return first.includes('\uFFFD') ? windows1252.decode(bytes) : first;
+  };
+  for (const file of candidates) {
     assertNotCancelled(signal);
-    if (!TEXT_EXTENSIONS.has(extensionOf(file.name))) continue;
     const remaining = IMPORT_LIMITS.maxAnalysisTextBytes - total;
-    if (remaining <= 0) break;
-    const text = await file.slice(0, Math.min(file.size, remaining)).text();
-    total += new TextEncoder().encode(text).byteLength;
+    if (file.size > remaining) throw new Error('Los textos exceden 256 KB. Reduce la ficha para evitar un análisis incompleto.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const text = decode(bytes);
+    total += bytes.byteLength;
     documents.push({ name: relativeName(file), text });
   }
   return documents;

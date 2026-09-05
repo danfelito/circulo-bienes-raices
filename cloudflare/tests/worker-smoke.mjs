@@ -496,11 +496,13 @@ const importInventory = {
 const importAnalysis = await request('/api/admin/property-import/analyze', {
   method: 'POST', headers: authHeaders(token), body: JSON.stringify({
     inventory: importInventory,
-    documents: [{ name: 'expediente/README.txt', text: 'Título: Casa del Malecón\nPrecio: $2,500,000\nCiudad: Veracruz\nDescripción: Frente al mar.' }],
+    documents: [{ name: 'expediente/README.txt', text: 'Título: Casa del Malecón\nPrecio: $2,500,000\nMoneda: MXN\nCiudad: Veracruz\nEstado: Veracruz\nPaís: México\nDescripción: Frente al mar.\nOperación: venta\nTipo: casa\nEstatus: disponible' }],
   }),
 });
 assert.equal(importAnalysis.payload.ai.used, false);
 assert.equal(importAnalysis.payload.draft.city, 'Veracruz');
+assert.equal(importAnalysis.payload.draft.price, 2500000);
+assert.equal(importAnalysis.payload.review.method, 'structured-metadata');
 const importStart = await request('/api/admin/property-import/start', {
   method: 'POST', headers: authHeaders(token), body: JSON.stringify({ inventory: importInventory }),
 }, 201);

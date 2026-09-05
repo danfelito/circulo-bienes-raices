@@ -1,3 +1,5 @@
+import { analyzePropertyDocuments, validatePropertyDraft } from '../../shared/property-metadata.mjs';
+
 const encoder = new TextEncoder();
 
 const VALID_OPERATIONS = new Set(['venta', 'renta']);
@@ -888,27 +890,6 @@ const validateImportInventory = inventory => {
   };
 };
 
-const basicImportDraft = (inventory, documents) => {
-  const text = documents.map(item => `${item.name}\n${item.text}`).join('\n').slice(0, IMPORT_MAX_ANALYSIS_TEXT_BYTES);
-  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  const label = name => lines.find(line => foldSpanish(line).startsWith(`${foldSpanish(name)}:`))?.split(':').slice(1).join(':').trim() || '';
-  const priceMatch = text.match(/(?:precio|valor)\s*[:=-]?\s*\$?\s*([0-9][0-9.,\s]*)/i);
-  const firstImage = inventory.media.find(item => item.category === 'image');
-  return {
-    title: label('título') || label('titulo') || lines[0]?.slice(0, 180) || '',
-    description: label('descripción') || label('descripcion') || lines.slice(1, 8).join(' ').slice(0, 4000),
-    operation: foldSpanish(label('operación') || label('operacion')) === 'renta' ? 'renta' : 'venta',
-    type: VALID_TYPES.has(foldSpanish(label('tipo'))) ? foldSpanish(label('tipo')) : 'casa',
-    price: priceMatch ? nullableNumber(priceMatch[1]) : '',
-    currency: 'MXN',
-    city: label('ciudad'),
-    state: label('estado') || 'Veracruz',
-    country: label('país') || label('pais') || 'México',
-    status: 'available', featured: false, published: false, features: [],
-    mainPhotoFilename: firstImage?.path || '',
-  };
-};
-
 const handleImportAnalyze = async (request, env) => {
   await requireAdmin(request, env);
   const body = await readJson(request);
@@ -921,18 +902,10 @@ const handleImportAnalyze = async (request, env) => {
   if (analysisBytes > IMPORT_MAX_ANALYSIS_TEXT_BYTES) {
     throw Object.assign(new Error('Los textos para análisis exceden el límite permitido'), { status: 413 });
   }
-  const draft = basicImportDraft(inventory, documents);
-  const missingFields = ['title', 'description', 'price', 'city'].filter(field => !draft[field]);
+  const analysis = analyzePropertyDocuments(inventory, documents);
   return json({
-    draft,
+    ...analysis,
     inventory: { counts: inventory.counts, totalBytes: inventory.totalBytes, files: inventory.files },
-    ai: { used: false, model: null },
-    review: {
-      confidence: missingFields.length ? 0.35 : 0.7,
-      missingFields,
-      warnings: ['El análisis local es orientativo; confirma los datos antes de registrar.'],
-      visualSummary: 'Inventario revisado localmente. No se enviaron archivos a un servicio de análisis externo.',
-    },
   });
 };
 
@@ -978,6 +951,13 @@ const handleImportComplete = async (request, env) => {
   const importId = String(body.importId || '').trim();
   const rawAssets = Array.isArray(body.assets) ? body.assets : [];
   if (!importId) throw Object.assign(new Error('importId es obligatorio'), { status: 400 });
+  const draftValidation = validatePropertyDraft(body.draft);
+  if (draftValidation.missingFields.length || draftValidation.invalidFields.length) {
+    throw Object.assign(new Error('El borrador contiene campos obligatorios vacíos o datos no válidos'), {
+      status: 422,
+      details: draftValidation,
+    });
+  }
   const existingImport = await env.DB.prepare('SELECT * FROM properties WHERE sourceId = ? AND syncSource = ?')
     .bind(importId, 'web-import').first();
   if (existingImport) {
