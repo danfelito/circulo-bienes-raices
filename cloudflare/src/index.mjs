@@ -344,10 +344,14 @@ const updateProperty = async (env, id, data) => {
   return env.DB.prepare('SELECT * FROM properties WHERE id = ?').bind(id).first();
 };
 
-const cloudinarySignature = async (env, params) => {
+const requireCloudinaryConfig = env => {
   if (!env.CLOUDINARY_API_SECRET || !env.CLOUDINARY_API_KEY || !env.CLOUDINARY_CLOUD_NAME) {
-    throw Object.assign(new Error('Configuración de Cloudinary incompleta'), { status: 503 });
+    throw Object.assign(new Error('Configuración de Cloudinary incompleta'), { status: 503, code: 'IMPORT_MEDIA_CONFIG' });
   }
+};
+
+const cloudinarySignature = async (env, params) => {
+  requireCloudinaryConfig(env);
   const signingText = Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .sort(([a], [b]) => a.localeCompare(b))
@@ -364,6 +368,7 @@ const normalizeExpectedFiles = values => [...new Set((Array.isArray(values) ? va
 const cloudinaryRoot = env => safeFolderSegment(env.CLOUDINARY_ROOT || DEFAULT_CLOUDINARY_ROOT);
 
 const createUploadSession = async (env, { ownerType, ownerId, expectedFiles = [], maxFiles }) => {
+  requireCloudinaryConfig(env);
   const normalizedOwner = String(ownerId || '').trim().slice(0, 160);
   if (!['property', 'source', 'import'].includes(ownerType) || !normalizedOwner) {
     throw Object.assign(new Error('Destino de carga no válido'), { status: 400 });
@@ -902,17 +907,37 @@ const handleImportAnalyze = async (request, env) => {
   if (analysisBytes > IMPORT_MAX_ANALYSIS_TEXT_BYTES) {
     throw Object.assign(new Error('Los textos para análisis exceden el límite permitido'), { status: 413 });
   }
-  const analysis = analyzePropertyDocuments(inventory, documents);
+  const analysis = analyzePropertyDocuments(inventory, documents, { sourceDocument: body.sourceDocument });
   return json({
     ...analysis,
     inventory: { counts: inventory.counts, totalBytes: inventory.totalBytes, files: inventory.files },
   });
 };
 
+const checkImportReadiness = async env => {
+  requireCloudinaryConfig(env);
+  try {
+    await env.DB.prepare('SELECT id, ownerType, ownerId, folder, expectedFiles, maxFiles, usedFiles, createdAt, expiresAt, completedAt FROM upload_sessions LIMIT 0').all();
+    await env.DB.prepare('SELECT id, sourceId, syncSource, syncVersion FROM properties LIMIT 0').all();
+    await env.DB.prepare('SELECT publicId, owners, notBefore, attempts, lastError, createdAt, updatedAt FROM cloudinary_cleanup_queue LIMIT 0').all();
+  } catch (error) {
+    error.code = /no such (table|column)/i.test(error.message) ? 'IMPORT_SCHEMA' : 'IMPORT_DATABASE';
+    error.status = 503;
+    throw error;
+  }
+};
+
+const handleImportReadiness = async (request, env) => {
+  await requireAdmin(request, env);
+  await checkImportReadiness(env);
+  return json({ ready: true, importerVersion: '2026-09-05.1' }, 200, { 'cache-control': 'no-store' });
+};
+
 const handleImportStart = async (request, env) => {
   await requireAdmin(request, env);
   const body = await readJson(request);
   const inventory = validateImportInventory(body.inventory);
+  await checkImportReadiness(env);
   const importId = makeId('import');
   const signed = await createUploadSession(env, {
     ownerType: 'import', ownerId: importId,
@@ -1280,6 +1305,7 @@ const handleApi = async (request, env) => {
   if (method === 'GET' && path === '/api/admin/properties') { await requireAdmin(request, env); return listProperties(request, env, true); }
   if (method === 'POST' && path === '/api/admin/uploads/sign') return handleUploadSign(request, env);
   if (method === 'POST' && path === '/api/admin/uploads/complete') return handleUploadComplete(request, env);
+  if (method === 'GET' && path === '/api/admin/property-import/readiness') return handleImportReadiness(request, env);
   if (method === 'POST' && path === '/api/admin/property-import/analyze') return handleImportAnalyze(request, env);
   if (method === 'POST' && path === '/api/admin/property-import/start') return handleImportStart(request, env);
   if (method === 'POST' && path === '/api/admin/property-import/cancel') return handleImportCancel(request, env);
@@ -1435,15 +1461,25 @@ export default {
       return withSecurityHeaders(response, request, env);
     } catch (error) {
       const status = Number(error?.status || 500);
+      const requestId = crypto.randomUUID();
       if (status >= 500) {
         console.error(JSON.stringify({
           message: 'worker_request_failed',
+          requestId,
           error: error?.message || String(error),
           method: request.method,
           path: new URL(request.url).pathname,
         }));
       }
-      return withSecurityHeaders(json({ error: status >= 500 ? 'Error interno del servidor' : error.message }, status), request, env);
+      const safeErrors = {
+        IMPORT_MEDIA_CONFIG: 'La carga de fotos no está configurada en el servidor. El administrador debe completar Cloudinary una sola vez; no necesitas abrir Cloudflare para cada inmueble.',
+        IMPORT_SCHEMA: 'Falta actualizar las tablas del importador en el servidor. Conserva la ficha y solicita la actualización del portal.',
+        IMPORT_DATABASE: 'No se pudo comprobar la base de datos. Conserva la ficha y vuelve a comprobar la conexión.',
+      };
+      return withSecurityHeaders(json({
+        error: status >= 500 ? (safeErrors[error.code] || 'El servidor no pudo completar la operación. Conserva la ficha y comparte la referencia del error con soporte.') : error.message,
+        ...(status >= 500 ? { code: Object.hasOwn(safeErrors, error.code) ? error.code : 'INTERNAL_ERROR', requestId } : {}),
+      }, status, { 'cache-control': 'no-store' }), request, env);
     }
   },
   async scheduled(_controller, env, ctx) {

@@ -10,13 +10,25 @@ const getAuthHeaders = () => {
 const readError = async (res, fallback) => {
   try {
     const payload = await res.json();
-    return payload.error || fallback;
+    const message = payload.error || fallback;
+    return payload.requestId ? `${message} Referencia: ${payload.requestId}` : message;
   } catch {
     return fallback;
   }
 };
 
 const api = {
+  getImportReadiness: async signal => {
+    const res = await fetch(`${API_BASE}/admin/property-import/readiness`, {
+      headers: getAuthHeaders(), credentials: 'include', cache: 'no-store', signal,
+    });
+    if (res.status === 401) throw new Error('La sesión venció. Inicia sesión de nuevo para cargar la propiedad.');
+    if (res.status === 404) throw new Error('El servidor tiene una versión anterior del importador. Falta publicar la actualización; abrir Cloudflare no activa la carga.');
+    if (!res.ok) throw new Error(await readError(res, 'No se pudo comprobar el servicio de carga.'));
+    const result = await res.json();
+    if (!result.ready || result.importerVersion !== '2026-09-05.1') throw new Error('Las versiones del portal y del importador no coinciden. Se necesita actualizar el servidor.');
+    return result;
+  },
   getConfig: async () => {
     const res = await fetch(`${API_BASE}/config`);
     if (!res.ok) throw new Error('Error al cargar la configuración');
@@ -242,6 +254,7 @@ const api = {
   },
 
   importProperty: async (draft, files, inventory, { signal, onProgress = () => {}, onRetry = () => {} } = {}) => {
+    await api.getImportReadiness(signal);
     const startRes = await fetch(`${API_BASE}/admin/property-import/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -249,7 +262,7 @@ const api = {
       signal,
       body: JSON.stringify({ inventory }),
     });
-    if (!startRes.ok) throw new Error(await readError(startRes, 'No se pudo iniciar la importación'));
+    if (!startRes.ok) throw new Error(`Inicio de carga: ${await readError(startRes, 'No se pudo iniciar la importación')}`);
     const session = await startRes.json();
     const mediaInventory = inventory.files.filter(item => ['image', 'video'].includes(item.category));
     const filesByPath = new Map(files.map(file => [relativeName(file), file]));
@@ -305,7 +318,7 @@ const api = {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include', signal,
           body: JSON.stringify({ importId: session.importId, draft, assets }),
         });
-        if (!completeRes.ok) throw new Error(await readError(completeRes, 'No se pudo registrar la propiedad en D1'));
+        if (!completeRes.ok) throw new Error(`Registro del inmueble: ${await readError(completeRes, 'No se pudo registrar la propiedad')}`);
         return completeRes.json();
       }, { signal, onRetry: event => onRetry({ ...event, file: 'registro D1' }) });
     } catch (error) {

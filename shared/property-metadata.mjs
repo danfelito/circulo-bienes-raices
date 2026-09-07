@@ -117,7 +117,7 @@ function csvRows(text) {
 }
 
 function documentEntries(document) {
-  const text = String(document.text || '').replace(/^\uFEFF/, '');
+  const text = String(document.text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
   const entries = [];
   const add = (key, value, line) => entries.push({ field: fieldsByKey.get(keyOf(key)), key, value, line });
   if (/\.json$/i.test(document.name)) {
@@ -151,17 +151,21 @@ function documentEntries(document) {
         current.value = `${current.value === '|' || current.value === '>' ? '' : current.value}\n${line.trim()}`.trim();
       } else if (line.trim()) current = null;
     }
-    if (end > 0 && !entries.some(entry => entry.field === 'description')) {
-      const body = lines.slice(end + 1).join('\n').trim();
+    if (!entries.some(entry => entry.field === 'description')) {
+      const lastMetadata = Math.max(0, ...entries.map(entry => entry.line || 0));
+      const body = lines.slice(end > 0 ? end + 1 : lastMetadata).join('\n').trim();
       // Do not promote a contact section or unrecognized key/value lines to public copy.
-      if (body && !/^[\s#*\-]*[\p{L}_][\p{L}\d _-]{0,70}\s*[:=]/mu.test(body)) add('description', body, end + 2);
+      if (body && !/^[\s#*\-]*[\p{L}_][\p{L}\d _-]{0,70}\s*[:=]/mu.test(body)
+        && (end > 0 || entries.some(entry => entry.field) || /(?:descripcion|descripci[oó]n|ficha|inmueble)/i.test(document.name))) {
+        add('description', body, end > 0 ? end + 2 : lastMetadata + 1);
+      }
     }
   }
   return entries;
 }
 
 function parseDocument(document) {
-  const draft = {}, sources = {}, warnings = [], invalid = new Set();
+  const draft = {}, sources = {}, warnings = document.warning ? [document.warning] : [], invalid = new Set();
   for (const entry of documentEntries(document)) {
     const { field, key, line } = entry;
     if (!field) continue; // Allowlist: owner/contact/internal metadata never become public fields.
@@ -207,7 +211,12 @@ export function validatePropertyDraft(draft, { requireDetails = true } = {}) {
   return { missingFields, invalidFields: [...new Set(invalidFields)] };
 }
 
-export function analyzePropertyDocuments(inventory, documents) {
+export function analyzePropertyDocuments(inventory, documents, { sourceDocument } = {}) {
+  if (sourceDocument) {
+    const selected = documents.find(item => item.name === sourceDocument);
+    if (!selected) fail('No se encontró la ficha seleccionada. Vuelve a elegir la carpeta.');
+    documents = [selected];
+  }
   const readmes = documents.filter(item => /(?:^|\/)readme\.(txt|md)$/i.test(item.name));
   const parents = new Set(readmes.map(item => item.name.split('/').slice(0, -1).join('/')));
   if (parents.size > 1) fail('Hay README en carpetas de distintas propiedades. Carga una sola carpeta por importación.');
@@ -215,7 +224,7 @@ export function analyzePropertyDocuments(inventory, documents) {
   const identifiers = new Set(parsed.map(item => item.draft.propertyId).filter(Boolean));
   if (identifiers.size > 1) fail('Los documentos contienen distintas referencias de propiedad. Separa las fichas antes de continuar.');
   // Prefer README, then a structured ficha. Never assemble a property from unrelated documents.
-  const primary = parsed.find(item => readmes.includes(item.document))
+  const primary = parsed.find(item => readmes.includes(item.document) && Object.keys(item.draft).length)
     || parsed.find(item => Object.keys(item.draft).length);
   const draft = { ...emptyPropertyDraft(), ...primary?.draft, published: false };
   const sources = { ...primary?.sources };
@@ -248,6 +257,25 @@ export function analyzePropertyDocuments(inventory, documents) {
   return { draft, ai: { used: false, model: null }, review: {
     method: 'structured-metadata', sourceDocument: primary?.document.name || null,
     sources, missingFields, invalidFields, warnings: [...new Set(warnings)],
-    visualSummary: 'Lectura de datos escritos; sin IA externa, fotografías ni PDF. Los campos no proporcionados quedan vacíos.',
+    visualSummary: 'Lectura de la ficha seleccionada. La dirección y la descripción proceden de ese documento; los datos no encontrados quedan pendientes de revisión.',
   } };
+}
+
+// Editorial suggestions use only structured, verified fields. Never infer location,
+// condition, views, investment returns or amenities from a filename.
+export function suggestPropertyTitle(draft) {
+  const types = { casa: 'Casa', departamento: 'Departamento', terreno: 'Terreno',
+    oficina: 'Oficina', local: 'Local', bodega: 'Bodega', rancho: 'Rancho' };
+  const type = types[draft.type];
+  if (!type) return draft.title || '';
+  const features = (draft.features || []).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const size = Number(draft.type === 'terreno' ? draft.lotArea : draft.area);
+  const area = size > 0 ? ` de ${new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(size)} m²` : '';
+  const highlight = /\boficinas?\b/.test(features) ? ' con oficinas'
+    : /\bjardin\b/.test(features) ? ' con jardín'
+      : /\balberca\b/.test(features) ? ' con alberca'
+        : /\bterraza\b/.test(features) ? ' con terraza' : '';
+  const base = `${type}${area}${highlight}`;
+  const located = draft.city ? `${base} en ${draft.city}` : base;
+  return located.length <= 65 ? located : base;
 }

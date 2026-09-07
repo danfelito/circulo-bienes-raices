@@ -216,7 +216,8 @@ assert.equal(tokenParts[2], createHmac('sha256', env.JWT_SECRET).update(`${token
 const me = await request('/api/auth/me', { headers: { authorization: `Bearer ${token}` } });
 assert.equal(me.payload.user.email, env.ADMIN_EMAIL);
 
-await request('/api/auth/me', { headers: { authorization: `Bearer ${token.slice(0, -1)}x` } }, 401);
+const tamperedSignature = `${tokenParts[2][0] === 'A' ? 'B' : 'A'}${tokenParts[2].slice(1)}`;
+await request('/api/auth/me', { headers: { authorization: `Bearer ${tokenParts[0]}.${tokenParts[1]}.${tamperedSignature}` } }, 401);
 const timestamp = Math.floor(Date.now() / 1000);
 const expiredToken = standardToken({
   sub: login.payload.user.id,
@@ -525,6 +526,40 @@ const repeatedImport = await request('/api/admin/property-import/complete', {
 });
 assert.equal(repeatedImport.payload.repeated, true);
 
+const readiness = await request('/api/admin/property-import/readiness', { headers: authHeaders(token) });
+assert.equal(readiness.payload.ready, true);
+assert.equal(readiness.payload.importerVersion, '2026-09-05.1');
+await request('/api/admin/property-import/readiness', {}, 401);
+const sessionCount = database.prepare('SELECT COUNT(*) AS total FROM upload_sessions').get().total;
+const missingMediaConfig = await request('/api/admin/property-import/start', {
+  method: 'POST', headers: authHeaders(token), body: JSON.stringify({ inventory: importInventory }),
+}, 503, { ...env, CLOUDINARY_API_KEY: '' });
+assert.equal(missingMediaConfig.payload.code, 'IMPORT_MEDIA_CONFIG');
+assert.ok(missingMediaConfig.payload.requestId);
+assert.equal(database.prepare('SELECT COUNT(*) AS total FROM upload_sessions').get().total, sessionCount);
+// The user's batch: 29 media items must register once, with the exact address.
+const bulkInventory = { files: Array.from({ length: 29 }, (_, i) => ({
+  path: `Bodega Cajigas/foto-${i}.jpg`, name: `foto-${i}.jpg`, size: 1660000, category: 'image',
+})) };
+const bulkStart = (await request('/api/admin/property-import/start', {
+  method: 'POST', headers: authHeaders(token), body: JSON.stringify({ inventory: bulkInventory }),
+}, 201)).payload;
+const bulkBody = { importId: bulkStart.importId,
+  draft: { ...importAnalysis.payload.draft, title: 'Bodega con oficinas', address: 'Libramiento Paso del Toro a Santa Fe', published: false },
+  assets: bulkInventory.files.map(item => assetForSession(bulkStart.signed, { sourceFilename: item.path })),
+};
+const bulk = (await request('/api/admin/property-import/complete', {
+  method: 'POST', headers: authHeaders(token), body: JSON.stringify(bulkBody),
+}, 201)).payload;
+assert.equal(bulk.property.photos.length, 29);
+assert.equal(bulk.property.address, bulkBody.draft.address);
+assert.equal(bulk.summary.published, false);
+const bulkRepeat = (await request('/api/admin/property-import/complete', {
+  method: 'POST', headers: authHeaders(token), body: JSON.stringify(bulkBody),
+})).payload;
+assert.equal(bulkRepeat.property.id, bulk.property.id);
+assert.equal(bulkRepeat.repeated, true);
+
 const accentSearch = await request(`/api/properties?search=${encodeURIComponent('CABANA')}`);
 assert.equal(accentSearch.payload.properties.length, 2);
 
@@ -533,10 +568,10 @@ await request('/api', {}, 404);
 const adminList = await request('/api/admin/properties?limit=100', {
   headers: { authorization: `Bearer ${token}` },
 });
-assert.equal(adminList.payload.properties.length, 3);
+assert.equal(adminList.payload.properties.length, 4);
 
 const stats = await request('/api/stats', { headers: { authorization: `Bearer ${token}` } });
-assert.equal(stats.payload.totalProperties, 3);
+assert.equal(stats.payload.totalProperties, 4);
 assert.equal(stats.payload.totalInquiries, 1);
 
 console.log('Cloudflare Worker smoke test passed: D1, auth distribuida, importador, limpieza segura, español y Media Sync directo.');

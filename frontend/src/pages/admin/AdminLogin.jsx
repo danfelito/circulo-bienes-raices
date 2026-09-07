@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, Mail, AlertCircle } from 'lucide-react';
 import api from '../../api';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +18,8 @@ const AdminLogin = () => {
     try {
       const data = await api.login(email, password);
       localStorage.setItem('token', data.token);
-      navigate('/admin');
+      const from = location.state?.from;
+      navigate(typeof from === 'string' && from.startsWith('/admin/') ? from : '/admin', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

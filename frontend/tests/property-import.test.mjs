@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { File } from 'node:buffer';
+import { readFile } from 'node:fs/promises';
 import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
 import { buildInventory, expandZipFiles, readAnalysisDocuments, retry } from '../src/lib/propertyImport.js';
-import { analyzePropertyDocuments, parsePropertyNumber, validatePropertyDraft } from '../../shared/property-metadata.mjs';
+import { analyzePropertyDocuments, suggestPropertyTitle, parsePropertyNumber, validatePropertyDraft } from '../../shared/property-metadata.mjs';
 
 const zipWriter = new ZipWriter(new BlobWriter('application/zip'));
 await zipWriter.add('expediente/fachada.jpg', new TextReader('imagen simulada'));
@@ -125,4 +126,36 @@ const controller = new AbortController();
 controller.abort();
 await assert.rejects(retry(async () => 'no', { signal: controller.signal }), error => error.name === 'AbortError');
 
-console.log('Web importer tests passed: ZIP seguro, inventario, cancelación y reintentos.');
+const bodegaText = await readFile(new URL('./fixtures/bodega-readme.txt', import.meta.url), 'utf8');
+const bodegaFiles = [
+  new File([bodegaText.replaceAll('\n', '\r\n')], 'README.txt'),
+  new File(['test image'], 'IMG-20250401-WA0002.jpg'),
+];
+const bodegaDocs = await readAnalysisDocuments(bodegaFiles);
+const bodegaInventory = buildInventory(bodegaFiles);
+const bodega = analyzePropertyDocuments(bodegaInventory, bodegaDocs);
+assert.equal(bodega.draft.address, 'Libramiento Paso del Toro a Santa Fe');
+assert.equal(bodega.draft.city, 'Medellín de Bravo');
+assert.equal(bodega.draft.price, 35000000);
+assert.equal(bodega.draft.area, 2000);
+assert.equal(bodega.draft.lotArea, 2500);
+assert.match(bodega.draft.description, /^Bodega nueva disponible/);
+assert.doesNotMatch(bodega.draft.description, /property_id|published:|README/);
+assert.match(suggestPropertyTitle(bodega.draft), /^Bodega de 2,000 m² con oficinas/);
+assert.ok(suggestPropertyTitle(bodega.draft).length <= 65);
+assert.deepEqual(validatePropertyDraft(bodega.draft), { missingFields: [], invalidFields: [] });
+const conflictingDocs = [...bodegaDocs, { name: 'notas.txt', text: 'address: Dirección de la oficina\ncity: Boca del Río' }];
+assert.equal(analyzePropertyDocuments(bodegaInventory, conflictingDocs).draft.address, '');
+assert.equal(analyzePropertyDocuments(bodegaInventory, conflictingDocs, { sourceDocument: 'README.txt' }).draft.address, bodega.draft.address);
+const plainFicha = analyzePropertyDocuments(bodegaInventory, [{ name: 'ficha.txt', text: 'Tipo: bodega\nDirección: Dirección exacta\n\nAmplia bodega para tu empresa.' }]);
+assert.equal(plainFicha.draft.description, 'Amplia bodega para tu empresa.');
+assert.equal(plainFicha.draft.address, 'Dirección exacta');
+assert.equal(suggestPropertyTitle({ type: 'bodega', features: [], city: '' }), 'Bodega');
+const docxWriter = new ZipWriter(new BlobWriter());
+await docxWriter.add('[Content_Types].xml', new TextReader('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'));
+await docxWriter.add('word/document.xml', new TextReader('<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Dirección: Libramiento Paso del Toro a Santa Fe</w:t></w:r></w:p></w:body></w:document>'));
+const docx = new File([await docxWriter.close()], 'ficha.docx');
+const docxDocs = await readAnalysisDocuments([docx]);
+assert.match(docxDocs[0].text, /Dirección: Libramiento/);
+assert.equal(analyzePropertyDocuments(bodegaInventory, docxDocs).draft.address, bodega.draft.address);
+console.log('Web importer tests passed: ZIP, README bodega, dirección, descripción, título, ficha seleccionada, DOCX y reintentos.');

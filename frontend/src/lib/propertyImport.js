@@ -15,8 +15,8 @@ export const IMPORT_LIMITS = Object.freeze({
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'heic', 'heif']);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv']);
-const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'md', 'csv', 'json']);
-const TEXT_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json']);
+const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'md', 'csv', 'json', 'yaml', 'yml']);
+const TEXT_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json', 'yaml', 'yml', 'docx', 'pdf']);
 
 const extensionOf = name => String(name || '').split('.').pop().toLowerCase();
 export const relativeName = file => file.relativePath || file.webkitRelativePath || file.name;
@@ -142,11 +142,26 @@ export const readAnalysisDocuments = async (files, signal) => {
   for (const file of candidates) {
     assertNotCancelled(signal);
     const remaining = IMPORT_LIMITS.maxAnalysisTextBytes - total;
-    if (file.size > remaining) throw new Error('Los textos exceden 256 KB. Reduce la ficha para evitar un análisis incompleto.');
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const text = decode(bytes);
-    total += bytes.byteLength;
+    let text;
+    if (/\.(pdf|docx)$/i.test(file.name)) {
+      try {
+        const { readRichPropertyDocument } = await import('./propertyDocumentReaders.js');
+        text = await readRichPropertyDocument(file, signal);
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        documents.push({ name: relativeName(file), text: '', warning: `No se pudo leer ${relativeName(file)}: ${error.message}` });
+        continue;
+      }
+    } else {
+      if (file.size > remaining) throw new Error('Los textos exceden 256 KB. Reduce la ficha para evitar un análisis incompleto.');
+      text = decode(new Uint8Array(await file.arrayBuffer()));
+    }
+    total += new TextEncoder().encode(text).byteLength;
+    if (total > IMPORT_LIMITS.maxAnalysisTextBytes) throw new Error('Los textos exceden 256 KB. Separa las fichas por inmueble.');
     documents.push({ name: relativeName(file), text });
+  }
+  for (const file of files.filter(file => /\.(doc|xls|xlsx)$/i.test(file.name))) {
+    documents.push({ name: relativeName(file), text: '', warning: `${file.name}: convierte la ficha a TXT, CSV, DOCX o PDF con texto para leerla.` });
   }
   return documents;
 };

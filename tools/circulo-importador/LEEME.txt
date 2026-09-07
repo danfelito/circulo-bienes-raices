@@ -1,0 +1,32 @@
+CIRCULO IMPORTADOR - ACCESO DIRECTO
+
+INSTALACION (SOLO LA PRIMERA VEZ)
+
+1. Haz doble clic en INSTALAR_CIRCULO_IMPORTADOR.cmd.
+2. Windows creara "Circulo Importador" en tu escritorio y lo abrira.
+
+USO NORMAL
+
+1. Haz doble clic en "Circulo Importador" en tu escritorio.
+2. Inicia sesion con tu usuario del portal si se solicita.
+3. Elige la carpeta o ZIP de UN inmueble, con fotos y ficha de informacion.
+4. Revisa direccion, descripcion, precio y titulo sugerido.
+5. Marca la publicacion si quieres mostrarlo al publico y pulsa Cargar y registrar.
+
+Circulo-Importador.url tambien se puede copiar manualmente al escritorio.
+
+No necesitas abrir Cloudflare, Wrangler, una terminal o un servidor local.
+El acceso no guarda contrasenas y no requiere instalar programas.
+
+IMPORTANTE: el acceso abre la version que este publicada en el portal.
+
+TXT, MD, CSV, JSON, YAML, DOCX y PDF con texto pueden aportar datos.
+Los PDF escaneados necesitan una ficha TXT o Word; no se realiza OCR.
+Las fichas con etiquetas (direccion, ciudad, precio, descripcion, etc.)
+permiten completar datos con precision. Si falta un dato no se inventa.
+La direccion de una oficina/contacto no debe etiquetarse como la del inmueble.
+Si hay documentos contradictorios, elige la ficha correcta en el selector.
+
+La configuracion de Cloudinary y la base de datos se realiza una sola vez
+por el administrador del portal. Si falta, el importador debe mostrar
+el motivo y una referencia de error, sin pedirte abrir Cloudflare cada vez.
