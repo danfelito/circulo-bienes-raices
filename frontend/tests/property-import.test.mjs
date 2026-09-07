@@ -158,4 +158,7 @@ const docx = new File([await docxWriter.close()], 'ficha.docx');
 const docxDocs = await readAnalysisDocuments([docx]);
 assert.match(docxDocs[0].text, /Dirección: Libramiento/);
 assert.equal(analyzePropertyDocuments(bodegaInventory, docxDocs).draft.address, bodega.draft.address);
+const importerSource = await readFile(new URL('../src/pages/admin/AdminPropertyImporter.jsx', import.meta.url), 'utf8');
+assert.doesNotMatch(importerSource, /disabled=\{busy \|\| !requiredReady \|\| !readiness\.ready\}/);
+assert.match(importerSource, /disabled=\{busy \|\| !requiredReady\}/);
 console.log('Web importer tests passed: ZIP, README bodega, dirección, descripción, título, ficha seleccionada, DOCX y reintentos.');
