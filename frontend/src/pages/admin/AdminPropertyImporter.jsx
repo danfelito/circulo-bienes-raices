@@ -145,7 +145,12 @@ const AdminPropertyImporter = () => {
     next.review.originalTitle = next.draft.title;
     next.review.suggestedTitle = title;
     setAnalysis(next);
-    setDraft({ ...emptyDraft, ...next.draft, title, published: false });
+    setDraft((current) => ({
+      ...emptyDraft,
+      ...next.draft,
+      title,
+      published: current.published,
+    }));
     setFeaturesText(
       Array.isArray(next.draft.features) ? next.draft.features.join(", ") : "",
     );
@@ -380,9 +385,9 @@ const AdminPropertyImporter = () => {
           </div>
           <Link
             to="/admin/propiedades"
-            className="text-sm text-gray-400 hover:text-white"
+            className="shrink-0 rounded-lg border border-white/15 px-4 py-2 text-sm text-gray-200 transition hover:border-amber-400/50 hover:text-white"
           >
-            Volver
+            Administrar propiedades
           </Link>
         </div>
         <div className="mb-5 p-4 rounded-xl border border-white/15 bg-white/5 text-sm text-gray-200">
@@ -628,6 +633,55 @@ const AdminPropertyImporter = () => {
               )}
             </section>
             <aside className="space-y-4">
+              <div className="p-5 bg-white/5 border border-white/10 rounded-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+                  Visibilidad al terminar
+                </p>
+                <div className="grid gap-3 mt-3">
+                  <button
+                    type="button"
+                    aria-pressed={!draft.published}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        published: false,
+                      }))
+                    }
+                    className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${!draft.published ? "border-amber-400/50 bg-amber-400/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                  >
+                    <EyeOff size={20} className="shrink-0 text-amber-400" />
+                    <span>
+                      <strong className="block text-sm text-white">
+                        Guardar como borrador
+                      </strong>
+                      <small className="text-xs text-gray-400">
+                        No aparecerá en el sitio público
+                      </small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={draft.published}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        published: true,
+                      }))
+                    }
+                    className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${draft.published ? "border-emerald-400/50 bg-emerald-400/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                  >
+                    <Eye size={20} className="shrink-0 text-emerald-400" />
+                    <span>
+                      <strong className="block text-sm text-white">
+                        Publicar al completar
+                      </strong>
+                      <small className="text-xs text-gray-400">
+                        Será visible cuando finalice la carga
+                      </small>
+                    </span>
+                  </button>
+                </div>
+              </div>
               {inventory && (
                 <div className="p-5 bg-white/5 rounded-2xl grid grid-cols-2 gap-3 text-sm">
                   <span className="text-gray-400">
