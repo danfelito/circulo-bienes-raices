@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye, Mail, Phone, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../../api';
 
 const AdminInquiries = () => {
@@ -97,7 +98,19 @@ const AdminInquiries = () => {
                       <a href={`mailto:${inquiry.email}`} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-amber-400"><Mail size={12} /> {inquiry.email}</a>
                       {inquiry.phone && <a href={`tel:${inquiry.phone.replace(/[^+\d]/g, '')}`} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-amber-400"><Phone size={12} /> {inquiry.phone}</a>}
                     </div>
-                    {inquiry.property && <p className="text-xs text-gray-400 mb-1">Propiedad: <span className="text-amber-400">{inquiry.property.title}</span></p>}
+                    {inquiry.property && (
+                      <p className="text-xs text-gray-400 mb-1">
+                        Propiedad:{' '}
+                        <Link
+                          to={`/propiedades/${inquiry.property.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-amber-400 underline decoration-amber-400/40 underline-offset-2 hover:text-amber-300"
+                        >
+                          {inquiry.property.title}
+                        </Link>
+                      </p>
+                    )}
                     <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">{inquiry.message}</p>
                     <p className="text-xs text-gray-500 mt-2">{new Date(inquiry.createdAt).toLocaleString('es-MX')}</p>
                   </div>
