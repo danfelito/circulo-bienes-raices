@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Eye, Pencil, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
 import api from '../../api';
 
 const isVideo = media => media?.publicId?.startsWith('video:') || /\.(mp4|mov|m4v|webm)(?:\?|$)/i.test(media?.url || '');
@@ -9,6 +9,7 @@ const coverFor = property => property.photos?.find(photo => !isVideo(photo))?.ur
 const AdminProperties = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [publicationBusy, setPublicationBusy] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
 
@@ -53,6 +54,19 @@ const AdminProperties = () => {
     }
   };
 
+  const handleTogglePublished = async property => {
+    const nextPublished = !property.published;
+    setPublicationBusy(property.id);
+    try {
+      const updated = await api.updateProperty(property.id, { published: nextPublished });
+      setProperties(current => current.map(item => item.id === property.id ? updated : item));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setPublicationBusy('');
+    }
+  };
+
   const statusLabels = {
     available: 'Disponible', sold: 'Vendida', rented: 'Rentada', reserved: 'Reservada',
   };
@@ -67,7 +81,7 @@ const AdminProperties = () => {
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link to="/admin/propiedades/importar" className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-400/10 border border-amber-400/25 text-amber-300 font-semibold rounded-lg">
-              <Sparkles size={18} /> Importar carpeta con IA
+              <Sparkles size={18} /> Importar carpeta
             </Link>
             <Link to="/admin/propiedades/nueva" className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 text-white font-semibold rounded-lg">
               <Plus size={18} /> Nueva propiedad manual
@@ -77,7 +91,7 @@ const AdminProperties = () => {
 
         <div className="mb-6 p-4 bg-white/[0.03] border border-white/5 rounded-xl flex items-start gap-3">
           <Sparkles size={20} className="text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-gray-400"><strong className="text-white">Nuevo flujo automático:</strong> sube una carpeta o ZIP con documentos, fotografías y videos. La IA prepara la ficha y te permite revisarla antes de publicar.</p>
+          <p className="text-sm text-gray-400"><strong className="text-white">Flujo automático:</strong> sube una carpeta o ZIP con documentos, fotografías y videos. El importador lee la ficha y tú decides si publicarla al terminar o mantenerla como borrador.</p>
         </div>
 
         {loading ? (
@@ -113,9 +127,17 @@ const AdminProperties = () => {
                     <td className="p-3 text-gray-300 capitalize">{property.operation}</td>
                     <td className="p-3 text-amber-400 font-medium">${property.price.toLocaleString('es-MX')} {property.currency}</td>
                     <td className="p-3">
-                      <span className={`text-xs px-2 py-1 rounded ${property.published ? 'bg-green-500/10 text-green-400' : 'bg-gray-500/10 text-gray-400'}`}>
-                        {property.published ? 'Publicada' : 'Borrador'}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePublished(property)}
+                        disabled={publicationBusy === property.id}
+                        className={`inline-flex min-w-[108px] items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${property.published ? 'border-green-400/25 bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'border-white/10 bg-white/5 text-gray-300 hover:border-amber-400/30 hover:text-amber-300'}`}
+                        aria-label={property.published ? `Ocultar ${property.title}` : `Publicar ${property.title}`}
+                        title={property.published ? 'Ocultar del catálogo público' : 'Hacer visible en el catálogo público'}
+                      >
+                        {property.published ? <Eye size={14} /> : <EyeOff size={14} />}
+                        {publicationBusy === property.id ? 'Guardando…' : property.published ? 'Publicada' : 'Publicar'}
+                      </button>
                     </td>
                     <td className="p-3">
                       <select value={property.status} onChange={event => handleStatusChange(property.id, event.target.value)} className="text-xs px-2 py-1 rounded bg-white/5 text-gray-300">
