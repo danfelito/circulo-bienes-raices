@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Hero from './components/Hero';
@@ -33,6 +33,22 @@ const Home = () => (
   </main>
 );
 
+const ShareRedirect = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate('/propiedades', { replace: true });
+  }, [navigate]);
+  return (
+    <main className="theme-page min-h-screen pt-32 px-6 flex items-center justify-center text-center">
+      <div className="max-w-xl">
+        <p className="text-sm font-semibold text-red-500 mb-3">Círculo Internacional</p>
+        <h1 className="text-4xl md:text-6xl font-heading italic mb-5">Abriendo propiedades</h1>
+        <p className="text-gray-400">Te estamos llevando al catálogo de propiedades disponibles.</p>
+      </div>
+    </main>
+  );
+};
+
 const NotFound = () => (
   <main className="theme-page min-h-screen pt-32 px-6 flex items-center justify-center text-center">
     <div className="max-w-xl">
@@ -59,6 +75,8 @@ const AppLayout = () => {
         <Route path="/" element={<Home />} />
         <Route path="/propiedades" element={<PropertiesPage />} />
         <Route path="/propiedades/:slug" element={<PropertyDetailPage />} />
+        <Route path="/compartir-propiedades.html" element={<ShareRedirect />} />
+        <Route path="/compartir-propiedades-v2.html" element={<ShareRedirect />} />
         <Route path="/asesores" element={<AdvisorsPage />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
