@@ -24,6 +24,7 @@ const Navbar = ({ fixedDark = false }) => {
     { to: '/#nosotros', label: 'Nosotros' },
     { to: '/#contacto', label: 'Contacto' },
     { to: '/asesores', label: 'Asesores', route: true },
+    { to: '/avaluo/', label: 'Avalúo' },
     {
       to: 'https://circulo-inmobiliario.onrender.com/',
       label: 'Buscador inteligente ↗',
