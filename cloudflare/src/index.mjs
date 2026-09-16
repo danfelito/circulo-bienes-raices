@@ -1446,6 +1446,11 @@ export default {
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
+      if ((request.method === 'GET' || request.method === 'HEAD') && (url.pathname === '/avaluo' || url.pathname === '/avaluo/' || url.pathname === '/avaluo/index.html')) {
+        const destination = new URL('https://valoraia.onrender.com/');
+        destination.search = url.search;
+        return withSecurityHeaders(Response.redirect(destination, 302), request, env);
+      }
       const isApi = url.pathname === '/api' || url.pathname.startsWith('/api/');
       if (isApi && !corsOriginAllowed(request, env)) {
         return withSecurityHeaders(json({ error: 'Origen no permitido' }, 403), request, env);

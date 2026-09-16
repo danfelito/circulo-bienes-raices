@@ -183,6 +183,11 @@ assert.equal(health.payload.platform, 'cloudflare-d1');
 const homepage = await request('/');
 assert.match(homepage.payload, /Círculo Internacional/);
 
+const valoraiaRedirect = await request('/avaluo/?tipo=comercial', {}, 302);
+assert.equal(valoraiaRedirect.response.headers.get('location'), 'https://valoraia.onrender.com/?tipo=comercial');
+assert.equal((await request('/avaluo', {}, 302)).response.headers.get('location'), 'https://valoraia.onrender.com/');
+assert.equal((await request('/avaluo/index.html', {}, 302)).response.headers.get('location'), 'https://valoraia.onrender.com/');
+
 const login = await request('/api/auth/login', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
