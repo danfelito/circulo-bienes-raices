@@ -1,3 +1,4 @@
+import { attribution, track, trackLead, contactLabel, campaignReference, onMarketingReady, marketingReady } from '../lib/marketing';
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -37,6 +38,10 @@ const PropertyDetailPage = () => {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '', honeypot: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [requestId,setRequestId] = useState(() => crypto.randomUUID());
+  const [measurementReady,refreshMarketing] = useState(marketingReady());
+  useEffect(() => onMarketingReady(() => refreshMarketing(true)), []);
+  useEffect(() => { if(property?.id && property.slug===slug && measurementReady) track('view_property',property.id); },[property?.id,property?.slug,slug,measurementReady]);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => {});
@@ -44,6 +49,8 @@ const PropertyDetailPage = () => {
 
   useEffect(() => {
     setLoading(true);
+    setSubmitted(false);
+    setRequestId(crypto.randomUUID());
     setCurrentPhoto(0);
     api.getProperty(slug)
       .then(data => {
@@ -61,7 +68,8 @@ const PropertyDetailPage = () => {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await api.submitInquiry({ ...formData, propertyId: property?.id });
+      const result = await api.submitInquiry({ ...formData, propertyId: property?.id, requestId, attribution: attribution() });
+      if(result.received) trackLead(property?.id,result.id);
       setSubmitted(true);
     } catch (err) {
       alert(err.message);
@@ -77,7 +85,7 @@ const PropertyDetailPage = () => {
   const photos = property.photos || [];
   const currentMedia = photos[currentPhoto];
   const whatsappNumber = (config.whatsappNumber || '').replace(/\D/g, '');
-  const whatsappText = encodeURIComponent(`Hola, me interesa la propiedad: ${property.title}`);
+  const whatsappText = encodeURIComponent(`Hola, me interesa la propiedad: ${property.title} (${property.slug}).${campaignReference() ? ` Referencia: ${campaignReference()}` : ""}`);
   const phoneHref = config.contactPhone ? `tel:${config.contactPhone.replace(/[^+\d]/g, '')}` : '';
   const emailHref = config.contactEmail
     ? `mailto:${config.contactEmail}?subject=${encodeURIComponent(`Consulta sobre ${property.title}`)}`
@@ -181,14 +189,15 @@ const PropertyDetailPage = () => {
                   <input type="email" placeholder="Email" required value={formData.email} onChange={event => setFormData({ ...formData, email: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                   <input type="tel" placeholder="Teléfono" value={formData.phone} onChange={event => setFormData({ ...formData, phone: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                   <textarea placeholder="Mensaje" required rows={3} value={formData.message} onChange={event => setFormData({ ...formData, message: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm resize-none" />
+                  <p className="text-xs text-gray-400">Al enviar solicitas que Círculo Internacional te contacte sobre este inmueble.</p>
                   <button type="submit" disabled={submitting} className="w-full py-2.5 bg-amber-500 text-white font-semibold rounded-lg disabled:opacity-50">{submitting ? 'Enviando...' : 'Enviar Consulta'}</button>
                 </form>
               )}
             </div>
 
-            {whatsappNumber && <a href={`https://wa.me/${whatsappNumber}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-4 bg-green-600 rounded-2xl text-white font-semibold"><MessageCircle size={20} /> WhatsApp</a>}
-            {phoneHref && <a href={phoneHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Phone size={20} /> Llamar</a>}
-            {emailHref && <a href={emailHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Mail size={20} /> Enviar correo</a>}
+            {whatsappNumber && <a onClick={() => track('whatsapp_click',property.id)} href={`https://wa.me/${whatsappNumber}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-4 bg-green-600 rounded-2xl text-white font-semibold"><MessageCircle size={20} /> {contactLabel()}</a>}
+            {phoneHref && <a onClick={() => track('phone_click',property.id)} href={phoneHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Phone size={20} /> Llamar</a>}
+            {emailHref && <a onClick={() => track('email_click',property.id)} href={emailHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Mail size={20} /> Enviar correo</a>}
 
             {related.length > 0 && (
               <div>

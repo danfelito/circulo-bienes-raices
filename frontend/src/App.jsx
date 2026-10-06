@@ -1,3 +1,5 @@
+import MarketingConsent from './components/MarketingConsent';
+import AdminMarketing from './pages/admin/AdminMarketing';
 import React, { useEffect } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -71,6 +73,7 @@ const AppLayout = () => {
   return (
     <div className={`theme-app min-h-screen ${isAdvisorsPage ? 'advisors-dark' : ''}`}>
       <Navbar fixedDark={isAdvisorsPage} />
+      <MarketingConsent />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/propiedades" element={<PropertiesPage />} />
@@ -78,6 +81,7 @@ const AppLayout = () => {
         <Route path="/compartir-propiedades.html" element={<ShareRedirect />} />
         <Route path="/compartir-propiedades-v2.html" element={<ShareRedirect />} />
         <Route path="/asesores" element={<AdvisorsPage />} />
+        <Route path="/admin/marketing" element={<ProtectedRoute><AdminMarketing /></ProtectedRoute>} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/propiedades" element={<ProtectedRoute><AdminProperties /></ProtectedRoute>} />
