@@ -29,7 +29,7 @@ const AdminDashboard = () => {
     { icon: Building2, label: 'Total Propiedades', value: stats?.totalProperties || 0, color: 'text-blue-400' },
     { icon: Star, label: 'Destacadas', value: stats?.featuredProperties || 0, color: 'text-amber-400' },
     { icon: TrendingUp, label: 'Disponibles', value: stats?.availableProperties || 0, color: 'text-green-400' },
-    { icon: Eye, label: 'Vistas Totales', value: stats?.totalViews || 0, color: 'text-purple-400' },
+    { icon: Eye, label: 'Consultas históricas de fichas', value: stats?.totalViews || 0, color: 'text-purple-400' },
     { icon: Mail, label: 'Consultas', value: stats?.totalInquiries || 0, color: 'text-cyan-400' },
     { icon: Users, label: 'No Leídas', value: stats?.unreadInquiries || 0, color: 'text-red-400' },
   ];
@@ -55,6 +55,7 @@ const AdminDashboard = () => {
           <Link to="/admin/consultas" className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-xl text-gray-300"><Mail size={20} /> Consultas {stats?.unreadInquiries > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{stats.unreadInquiries}</span>}<ArrowRight size={16} className="ml-auto" /></Link>
         </div>
 
+        <Link to="/admin/marketing" className="block mb-8 p-4 bg-amber-400/10 border border-amber-400/20 rounded-xl text-amber-400">Medición, campañas y experimentos →</Link>
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-white mb-4">Propiedades Recientes</h2>
           <div className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden">
