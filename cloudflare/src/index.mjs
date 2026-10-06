@@ -1,3 +1,4 @@
+import { marketingApi, safeAttribution, processCrm } from './marketing.mjs';
 import { analyzePropertyDocuments, validatePropertyDraft } from '../../shared/property-metadata.mjs';
 
 const encoder = new TextEncoder();
@@ -711,11 +712,23 @@ const handleInquiry = async (request, env) => {
   const email = String(body.email || '').trim().slice(0, 240);
   const message = String(body.message || '').trim().slice(0, 5000);
   if (!name || !email || !message) throw Object.assign(new Error('Nombre, email y mensaje son requeridos'), { status: 400 });
+  const requestId = /^[a-zA-Z0-9_-]{16,80}$/.test(body.requestId || '') ? body.requestId : crypto.randomUUID();
+  const duplicate = await env.DB.prepare('SELECT inquiryId FROM inquiry_marketing WHERE requestId=?').bind(requestId).first();
+  if (duplicate) return json({ id: duplicate.inquiryId, duplicate: true }, 200);
   const id = makeId('inq');
-  await env.DB.prepare(`INSERT INTO inquiries (id, name, email, phone, message, propertyId, honeypot, isRead, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?)`)
-    .bind(id, name, email, String(body.phone || '').trim() || null, message, body.propertyId || null, now()).run();
-  return json(await env.DB.prepare('SELECT * FROM inquiries WHERE id = ?').bind(id).first(), 201);
+  const attribution = safeAttribution(body.attribution);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO inquiries (id,name,email,phone,message,propertyId,honeypot,isRead,createdAt) VALUES (?,?,?,?,?,?,NULL,0,?)`).bind(id,name,email,String(body.phone || '').trim() || null,message,body.propertyId || null,now()),
+      env.DB.prepare(`INSERT INTO inquiry_marketing (inquiryId,requestId,attribution,stage,updatedAt) VALUES (?,?,?,'nuevo',?)`).bind(id,requestId,JSON.stringify(attribution),now()),
+      env.DB.prepare(`INSERT INTO crm_outbox (inquiryId,status,updatedAt) VALUES (?,'pending',?)`).bind(id,now()),
+    ]);
+  } catch (error) {
+    const existing = await env.DB.prepare('SELECT inquiryId FROM inquiry_marketing WHERE requestId=?').bind(requestId).first();
+    if (existing) return json({id:existing.inquiryId,duplicate:true},200);
+    throw error;
+  }
+  return json({ id, received: true }, 201);
 };
 
 const handleInquiryList = async (request, env) => {
@@ -1273,6 +1286,10 @@ const handleApi = async (request, env) => {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method.toUpperCase();
+  if (path.startsWith('/api/marketing') || path.startsWith('/api/admin/marketing')) {
+    const result = await marketingApi(request, env, { requireAdmin, readJson });
+    if (result) return result;
+  }
   let match;
 
   if (method === 'OPTIONS') return new Response(null, { status: 204 });
@@ -1459,6 +1476,7 @@ export default {
         ? await handleApi(request, env)
         : await env.ASSETS.fetch(request);
       if (isApi && ctx?.waitUntil) {
+        ctx.waitUntil(processCrm(env).catch(() => {}));
         ctx.waitUntil(processCloudinaryCleanup(env).catch(error => console.error(JSON.stringify({
           message: 'cloudinary_cleanup_failed', error: error?.message || String(error),
         }))));
