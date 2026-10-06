@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { processCrm } from '../src/marketing.mjs';
 import worker, { processCloudinaryCleanup } from '../src/index.mjs';
 
 class D1StatementMock {
@@ -94,7 +95,7 @@ class D1Mock {
 }
 
 const database = new DatabaseSync(':memory:');
-for (const migration of ['0001_initial_schema.sql', '0002_secure_upload_sessions.sql']) {
+for (const migration of ['0001_initial_schema.sql', '0002_secure_upload_sessions.sql', '0003_marketing_measurement.sql']) {
   database.exec(fs.readFileSync(new URL(`../migrations/${migration}`, import.meta.url), 'utf8'));
 }
 
@@ -327,6 +328,33 @@ const inquiry = await request('/api/inquiries', {
   }),
 }, 201);
 assert.ok(inquiry.payload.id);
+
+// Marketing isolation, idempotency, attribution and a failed CRM must not lose a lead.
+await request('/api/admin/marketing', {}, 401);
+await request('/api/admin/marketing/config', {method:'PUT',headers:authHeaders(token),body:JSON.stringify({ga4Id:'invalid'})},400);
+const leadBody={name:'Marketing test',email:'marketing@example.com',message:'Solicitud',propertyId:created.payload.id,requestId:'marketing-request-0001',attribution:{first:{source:'instagram',campaign:'rioja_oct'},latest:{source:'facebook',content:'video_b'},email:'must-not-copy@example.com'}};
+const once=await request('/api/inquiries',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(leadBody)},201);
+const twice=await request('/api/inquiries',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(leadBody)});
+assert.equal(once.payload.id,twice.payload.id);
+assert.equal(database.prepare('SELECT count(*) AS n FROM inquiry_marketing WHERE requestId=?').get(leadBody.requestId).n,1);
+const eventBody={id:'marketing-event-0001',sessionId:'marketing-session-0001',event:'view_property',path:'/propiedades/test?email=private@example.com',propertyId:created.payload.id,consent:true,attribution:leadBody.attribution};
+await request('/api/marketing/events',{method:'POST',headers:{'content-type':'application/json',origin:'https://evil.test'},body:JSON.stringify(eventBody)},403);
+await request('/api/marketing/events',{method:'POST',headers:{'content-type':'application/json',origin:'https://circulo.test'},body:JSON.stringify({...eventBody,consent:false})},400);
+await request('/api/marketing/events',{method:'POST',headers:{'content-type':'application/json',origin:'https://circulo.test'},body:JSON.stringify(eventBody)});
+await request('/api/marketing/events',{method:'POST',headers:{'content-type':'application/json',origin:'https://circulo.test'},body:JSON.stringify(eventBody)});
+assert.equal(database.prepare('SELECT count(*) AS n FROM marketing_events').get().n,1);
+assert.equal(database.prepare('SELECT path FROM marketing_events').get().path,'/propiedades/test');
+const marketing=await request('/api/admin/marketing',{headers:authHeaders(token)});
+assert.equal(marketing.payload.totals[0].total,1);
+assert.ok(!JSON.stringify(marketing.payload.leads).includes('must-not-copy'));
+await request('/api/admin/marketing/stage',{method:'PUT',headers:authHeaders(token),body:JSON.stringify({inquiryId:once.payload.id,stage:'calificado'})});
+assert.equal(database.prepare('SELECT stage FROM inquiry_marketing WHERE inquiryId=?').get(once.payload.id).stage,'calificado');
+const previousFetch=globalThis.fetch;
+globalThis.fetch=async()=>new Response('{}',{status:503});
+await processCrm({...env,GHL_CIRCULO_PRIVATE_TOKEN:'test-only',GHL_CIRCULO_LOCATION_ID:'test-location'});
+assert.equal(database.prepare('SELECT status FROM crm_outbox WHERE inquiryId=?').get(once.payload.id).status,'failed');
+assert.ok(database.prepare('SELECT id FROM inquiries WHERE id=?').get(once.payload.id));
+globalThis.fetch=previousFetch;
 
 const signed = await signUpload({ sourceId: 'CI-VER-0002', files: ['fotos/01-cabaña.jpg'] });
 assert.match(signed.uploadUrl, /cloudinary\.com/);
@@ -577,6 +605,6 @@ assert.equal(adminList.payload.properties.length, 4);
 
 const stats = await request('/api/stats', { headers: { authorization: `Bearer ${token}` } });
 assert.equal(stats.payload.totalProperties, 4);
-assert.equal(stats.payload.totalInquiries, 1);
+assert.equal(stats.payload.totalInquiries, 2);
 
 console.log('Cloudflare Worker smoke test passed: D1, auth distribuida, importador, limpieza segura, español y Media Sync directo.');
