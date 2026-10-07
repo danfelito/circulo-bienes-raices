@@ -1,0 +1,138 @@
+// CRM extension blueprint. Merge into schema.prisma in the implementation migration.
+// Kept separate first to avoid changing the production DB before migration review.
+
+enum LeadStage { new contacted qualified visit_scheduled visited negotiation won lost }
+enum TaskStatus { open done canceled }
+enum AuditStatus { pending approved rejected }
+enum PostStatus { draft ready publishing published failed }
+
+model Lead {
+  id String @id @default(cuid())
+  name String
+  email String?
+  phone String?
+  source String @default("web")
+  campaign String?
+  stage LeadStage @default(new)
+  temperature Int @default(0)
+  assignedToId String?
+  nextActionAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  properties LeadProperty[]
+  activities Activity[]
+  tasks Task[]
+  visits Visit[]
+  @@index([stage, nextActionAt])
+  @@map("crm_leads")
+}
+
+model LeadProperty {
+  leadId String
+  propertyId String
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  lead Lead @relation(fields:[leadId], references:[id], onDelete:Cascade)
+  leadProperty Property @relation(fields:[propertyId], references:[id], onDelete:Cascade)
+  @@id([leadId, propertyId])
+  @@map("crm_lead_properties")
+}
+
+model Activity {
+  id String @id @default(cuid())
+  leadId String
+  type String
+  body String? @db.Text
+  metadata String? @db.Text
+  createdAt DateTime @default(now())
+  lead Lead @relation(fields:[leadId], references:[id], onDelete:Cascade)
+  @@index([leadId, createdAt])
+  @@map("crm_activities")
+}
+
+model Task {
+  id String @id @default(cuid())
+  leadId String
+  title String
+  dueAt DateTime
+  status TaskStatus @default(open)
+  assignedToId String?
+  createdAt DateTime @default(now())
+  lead Lead @relation(fields:[leadId], references:[id], onDelete:Cascade)
+  @@index([status, dueAt])
+  @@map("crm_tasks")
+}
+
+model Visit {
+  id String @id @default(cuid())
+  leadId String
+  propertyId String
+  scheduledAt DateTime
+  status String @default("scheduled")
+  notes String? @db.Text
+  createdAt DateTime @default(now())
+  lead Lead @relation(fields:[leadId], references:[id], onDelete:Cascade)
+  visitProperty Property @relation(fields:[propertyId], references:[id], onDelete:Cascade)
+  @@index([scheduledAt, status])
+  @@map("crm_visits")
+}
+
+model MediaAsset {
+  id String @id @default(cuid())
+  propertyId String
+  kind String
+  version Int @default(1)
+  url String
+  auditStatus AuditStatus @default(pending)
+  createdAt DateTime @default(now())
+  mediaProperty Property @relation(fields:[propertyId], references:[id], onDelete:Cascade)
+  audits MediaAudit[]
+  posts SocialPost[]
+  @@map("media_assets")
+}
+
+model MediaAudit {
+  id String @id @default(cuid())
+  assetId String
+  status AuditStatus
+  checks String @db.Text
+  notes String? @db.Text
+  createdAt DateTime @default(now())
+  asset MediaAsset @relation(fields:[assetId], references:[id], onDelete:Cascade)
+  @@map("media_audits")
+}
+
+model SocialAccount {
+  id String @id @default(cuid())
+  provider String
+  externalAccountId String
+  displayName String?
+  scopes String? @db.Text
+  encryptedToken String @db.Text
+  encryptedRefreshToken String? @db.Text
+  expiresAt DateTime?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  posts SocialPost[]
+  @@unique([provider, externalAccountId])
+  @@map("social_accounts")
+}
+
+model SocialPost {
+  id String @id @default(cuid())
+  assetId String
+  accountId String
+  caption String @db.Text
+  status PostStatus @default(draft)
+  externalPostId String?
+  permalink String?
+  error String? @db.Text
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  asset MediaAsset @relation(fields:[assetId], references:[id], onDelete:Cascade)
+  account SocialAccount @relation(fields:[accountId], references:[id], onDelete:Cascade)
+  @@index([status, createdAt])
+  @@map("social_posts")
+}
