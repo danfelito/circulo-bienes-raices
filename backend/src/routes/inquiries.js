@@ -7,7 +7,7 @@ const router = express.Router();
 // POST /api/inquiries - Public (with honeypot anti-spam)
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone, message, propertyId, honeypot } = req.body;
+    const { name, email, phone, message, propertyId, honeypot, attribution } = req.body;
 
     // Honeypot anti-spam: if honeypot is filled, it's a bot
     if (honeypot) {
@@ -18,8 +18,14 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Nombre, email y mensaje son requeridos' });
     }
 
+    const allowedKeys = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','gclid','fbclid','ttclid','landingPath','referrerHost'];
+    const safeTouch = touch => Object.fromEntries(allowedKeys.filter(key => typeof touch?.[key] === 'string').map(key => [key, touch[key].slice(0, 250)]));
+    const safeAttribution = attribution && typeof attribution === 'object' && !Array.isArray(attribution)
+      ? { firstTouch: safeTouch(attribution.firstTouch), lastTouch: safeTouch(attribution.lastTouch) }
+      : undefined;
+
     const inquiry = await prisma.inquiry.create({
-      data: { name, email, phone, message, propertyId },
+      data: { name, email, phone, message, propertyId, attribution: safeAttribution },
     });
 
     res.status(201).json(inquiry);

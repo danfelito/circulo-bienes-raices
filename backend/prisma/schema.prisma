@@ -83,6 +83,7 @@ model Photo {
 }
 
 model Inquiry {
+  attribution Json?
   id         String   @id @default(cuid())
   name       String
   email      String

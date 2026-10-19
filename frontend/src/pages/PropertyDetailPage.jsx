@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Bath, Bed, Car, ChevronLeft, ChevronRight, Mail, MapPin, Maximize, MessageCircle, Phone, Play } from 'lucide-react';
@@ -6,6 +6,7 @@ import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../api';
+import { getAttribution, marketingEvent } from '../marketingAttribution';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -37,6 +38,7 @@ const PropertyDetailPage = () => {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '', honeypot: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const formStarted = useRef(false);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => {});
@@ -45,9 +47,11 @@ const PropertyDetailPage = () => {
   useEffect(() => {
     setLoading(true);
     setCurrentPhoto(0);
+    formStarted.current = false;
     api.getProperty(slug)
       .then(data => {
         setProperty(data.property);
+        marketingEvent('property_view', data.property?.id, { property_slug: slug });
         setRelated(data.related || []);
       })
       .catch(() => {
@@ -61,7 +65,8 @@ const PropertyDetailPage = () => {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await api.submitInquiry({ ...formData, propertyId: property?.id });
+      await api.submitInquiry({ ...formData, propertyId: property?.id, attribution: getAttribution() });
+      marketingEvent('lead_submit', property?.id);
       setSubmitted(true);
     } catch (err) {
       alert(err.message);
@@ -77,7 +82,8 @@ const PropertyDetailPage = () => {
   const photos = property.photos || [];
   const currentMedia = photos[currentPhoto];
   const whatsappNumber = (config.whatsappNumber || '').replace(/\D/g, '');
-  const whatsappText = encodeURIComponent(`Hola, me interesa la propiedad: ${property.title}`);
+  const source = getAttribution()?.lastTouch?.utm_source;
+  const whatsappText = encodeURIComponent(`Hola, me interesa la propiedad: ${property.title}. Referencia: ${property.slug}${source ? ` (origen: ${source})` : ''}`);
   const phoneHref = config.contactPhone ? `tel:${config.contactPhone.replace(/[^+\d]/g, '')}` : '';
   const emailHref = config.contactEmail
     ? `mailto:${config.contactEmail}?subject=${encodeURIComponent(`Consulta sobre ${property.title}`)}`
@@ -95,6 +101,7 @@ const PropertyDetailPage = () => {
                 <video
                   key={currentMedia.id || currentMedia.url}
                   src={currentMedia.url}
+                  onPlay={() => marketingEvent('video_play', property.id)}
                   controls
                   playsInline
                   preload="metadata"
@@ -107,10 +114,10 @@ const PropertyDetailPage = () => {
               {currentMedia && isVideo(currentMedia) && <span className="absolute top-3 left-3 px-3 py-1.5 bg-black/70 rounded-full text-white text-xs flex items-center gap-1.5 pointer-events-none"><Play size={13} /> Video del inmueble</span>}
               {photos.length > 1 && (
                 <>
-                  <button type="button" onClick={() => setCurrentPhoto(current => (current - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo anterior"><ChevronLeft size={20} /></button>
-                  <button type="button" onClick={() => setCurrentPhoto(current => (current + 1) % photos.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo siguiente"><ChevronRight size={20} /></button>
+                  <button type="button" onClick={() => { marketingEvent('gallery_interaction', property.id); setCurrentPhoto(current => (current - 1 + photos.length) % photos.length); }} className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo anterior"><ChevronLeft size={20} /></button>
+                  <button type="button" onClick={() => { marketingEvent('gallery_interaction', property.id); setCurrentPhoto(current => (current + 1) % photos.length); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/60 rounded-full text-white" aria-label="Archivo siguiente"><ChevronRight size={20} /></button>
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 max-w-[80%] overflow-x-auto p-1 rounded-full bg-black/25">
-                    {photos.map((media, index) => <button type="button" key={media.id || index} onClick={() => setCurrentPhoto(index)} className={`w-2.5 h-2.5 shrink-0 rounded-full ${index === currentPhoto ? 'bg-amber-400' : isVideo(media) ? 'bg-blue-400/80' : 'bg-white/50'}`} aria-label={`Ver ${isVideo(media) ? 'video' : 'foto'} ${index + 1}`} />)}
+                    {photos.map((media, index) => <button type="button" key={media.id || index} onClick={() => { marketingEvent('gallery_interaction', property.id); setCurrentPhoto(index); }} className={`w-2.5 h-2.5 shrink-0 rounded-full ${index === currentPhoto ? 'bg-amber-400' : isVideo(media) ? 'bg-blue-400/80' : 'bg-white/50'}`} aria-label={`Ver ${isVideo(media) ? 'video' : 'foto'} ${index + 1}`} />)}
                   </div>
                 </>
               )}
@@ -175,7 +182,7 @@ const PropertyDetailPage = () => {
               {submitted ? (
                 <p className="text-green-400">Consulta enviada. Te contactaremos pronto.</p>
               ) : (
-                <form onSubmit={handleInquiry} className="space-y-3">
+                <form onFocus={() => { if (!formStarted.current) { formStarted.current = true; marketingEvent('form_start', property.id); } }} onSubmit={handleInquiry} className="space-y-3">
                   <input type="text" name="honeypot" value={formData.honeypot} onChange={event => setFormData({ ...formData, honeypot: event.target.value })} className="hidden" tabIndex={-1} autoComplete="off" />
                   <input type="text" placeholder="Nombre" required value={formData.name} onChange={event => setFormData({ ...formData, name: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                   <input type="email" placeholder="Email" required value={formData.email} onChange={event => setFormData({ ...formData, email: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
@@ -186,9 +193,9 @@ const PropertyDetailPage = () => {
               )}
             </div>
 
-            {whatsappNumber && <a href={`https://wa.me/${whatsappNumber}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-4 bg-green-600 rounded-2xl text-white font-semibold"><MessageCircle size={20} /> WhatsApp</a>}
-            {phoneHref && <a href={phoneHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Phone size={20} /> Llamar</a>}
-            {emailHref && <a href={emailHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Mail size={20} /> Enviar correo</a>}
+            {whatsappNumber && <a onClick={() => marketingEvent('whatsapp_click', property.id)} href={`https://wa.me/${whatsappNumber}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-4 bg-green-600 rounded-2xl text-white font-semibold"><MessageCircle size={20} /> WhatsApp</a>}
+            {phoneHref && <a onClick={() => marketingEvent('phone_click', property.id)} href={phoneHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Phone size={20} /> Llamar</a>}
+            {emailHref && <a onClick={() => marketingEvent('email_click', property.id)} href={emailHref} className="flex items-center justify-center gap-2 p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-300 font-medium"><Mail size={20} /> Enviar correo</a>}
 
             {related.length > 0 && (
               <div>
