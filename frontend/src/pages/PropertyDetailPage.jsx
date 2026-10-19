@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Bath, Bed, Car, ChevronLeft, ChevronRight, Mail, MapPin, Maximize, MessageCircle, Phone, Play } from 'lucide-react';
@@ -38,6 +38,7 @@ const PropertyDetailPage = () => {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '', honeypot: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const formStarted = useRef(false);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => {});
@@ -46,6 +47,7 @@ const PropertyDetailPage = () => {
   useEffect(() => {
     setLoading(true);
     setCurrentPhoto(0);
+    formStarted.current = false;
     api.getProperty(slug)
       .then(data => {
         setProperty(data.property);
@@ -180,7 +182,7 @@ const PropertyDetailPage = () => {
               {submitted ? (
                 <p className="text-green-400">Consulta enviada. Te contactaremos pronto.</p>
               ) : (
-                <form onFocus={() => marketingEvent('form_interaction', property.id)} onSubmit={handleInquiry} className="space-y-3">
+                <form onFocus={() => { if (!formStarted.current) { formStarted.current = true; marketingEvent('form_start', property.id); } }} onSubmit={handleInquiry} className="space-y-3">
                   <input type="text" name="honeypot" value={formData.honeypot} onChange={event => setFormData({ ...formData, honeypot: event.target.value })} className="hidden" tabIndex={-1} autoComplete="off" />
                   <input type="text" placeholder="Nombre" required value={formData.name} onChange={event => setFormData({ ...formData, name: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
                   <input type="email" placeholder="Email" required value={formData.email} onChange={event => setFormData({ ...formData, email: event.target.value })} className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm" />
